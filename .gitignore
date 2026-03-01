@@ -1,0 +1,26 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.so
+*.egg-info/
+.venv/
+venv/
+
+# Environment
+.env
+
+# Storage
+storage/uploads/
+storage/results/
+storage/models/
+
+# Alembic cache
+alembic/versions/*.pyc
+
+# Logs
+*.log
+
+# OS
+.DS_Store
