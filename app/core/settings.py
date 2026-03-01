@@ -15,4 +15,7 @@ class Settings(BaseSettings):
 
     ACTIVE_MODEL_ID: str | None = None
 
+    API_USER: str
+    API_PASSWORD: str
+
 settings = Settings()
