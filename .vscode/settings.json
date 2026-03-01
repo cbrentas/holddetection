@@ -1,0 +1,20 @@
+{
+  "files.watcherExclude": {
+    "**/venv/**": true,
+    "**/__pycache__/**": true,
+    "**/storage/**": true,
+    "**/runs/**": true
+  },
+  "search.exclude": {
+    "**/venv/**": true,
+    "**/__pycache__/**": true,
+    "**/storage/**": true,
+    "**/runs/**": true
+  },
+  "python.analysis.exclude": [
+    "**/venv/**",
+    "**/storage/**",
+    "**/runs/**"
+  ],
+  "python.analysis.indexing": false
+}
