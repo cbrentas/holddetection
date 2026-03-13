@@ -9,7 +9,7 @@ from app.core.settings import settings
 from app.core.security import basic_auth
 from app.core.storage import make_local_uri, resolve_storage_uri
 
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, RedirectResponse
 from fastapi import HTTPException
 from fastapi.staticfiles import StaticFiles
 import os
@@ -21,7 +21,15 @@ app.mount("/static", StaticFiles(directory="app/static"), name="static")
 
 @app.get("/")
 def read_index():
+    return RedirectResponse(url="/bbro")
+
+@app.get("/bbro")
+def read_bbro():
     return FileResponse("app/static/index.html")
+
+@app.get("/bbro/dashboard")
+def read_dashboard():
+    return FileResponse("app/static/dashboard.html")
 
 # Ensure directories exist
 Path(settings.STORAGE_UPLOAD_DIR).mkdir(parents=True, exist_ok=True)
@@ -105,3 +113,58 @@ def get_result_image(job_id: str, db: Session = Depends(get_db), username: str =
         raise HTTPException(status_code=404, detail="File missing on disk")
 
     return FileResponse(local_path)
+
+from sqlalchemy import desc
+from app.db.models import Model, TrainingRun, Job
+
+@app.get("/api/dashboard/stats")
+def get_dashboard_stats(db: Session = Depends(get_db), username: str = Depends(basic_auth)):
+    active_model = None
+    if settings.ACTIVE_MODEL_ID:
+        try:
+            am = db.query(Model).filter(Model.id == settings.ACTIVE_MODEL_ID).first()
+            if am:
+                active_model = {
+                    "id": str(am.id),
+                    "name": am.name,
+                    "version": am.version,
+                    "task": am.task,
+                    "created_at": am.created_at.isoformat()
+                }
+        except Exception:
+            pass
+
+    recent_jobs = []
+    try:
+        jobs = db.query(Job).order_by(desc(Job.created_at)).limit(10).all()
+        for j in jobs:
+            recent_jobs.append({
+                "id": str(j.id),
+                "status": j.status,
+                "model_id": str(j.model_id),
+                "created_at": j.created_at.isoformat(),
+                "started_at": j.started_at.isoformat() if j.started_at else None,
+                "finished_at": j.finished_at.isoformat() if j.finished_at else None,
+            })
+    except Exception:
+        pass
+
+    recent_runs = []
+    try:
+        runs = db.query(TrainingRun).order_by(desc(TrainingRun.created_at)).limit(5).all()
+        for r in runs:
+            recent_runs.append({
+                "id": str(r.id),
+                "status": r.status,
+                "metrics": r.metrics,
+                "hyperparams": r.hyperparams,
+                "created_at": r.created_at.isoformat()
+            })
+    except Exception:
+        pass
+        
+    return {
+        "active_model": active_model,
+        "recent_jobs": recent_jobs,
+        "recent_training_runs": recent_runs
+    }
