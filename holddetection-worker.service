@@ -1,0 +1,13 @@
+[Unit]
+Description=Holddetection Inference Worker Background Service
+After=network.target
+
+[Service]
+User=dev_pipe
+WorkingDirectory=/home/dev_pipe/holddetection
+ExecStart=/home/dev_pipe/holddetection/venv/bin/python -m app.workers.inference_worker
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

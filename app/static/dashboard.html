@@ -1,0 +1,492 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ML Dashboard - Hold Detection</title>
+    <style>
+        :root {
+            --bg-color: #0f172a;
+            --card-bg: rgba(30, 41, 59, 0.7);
+            --text-color: #f8fafc;
+            --primary: #3b82f6;
+            --primary-hover: #2563eb;
+            --border-color: rgba(255, 255, 255, 0.1);
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            margin: 0;
+            padding: 2rem;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        .container {
+            width: 100%;
+            max-width: 1000px;
+        }
+
+        header {
+            text-align: center;
+            margin-bottom: 2rem;
+            position: relative;
+        }
+
+        .back-link {
+            position: absolute;
+            left: 0;
+            top: 50%;
+            transform: translateY(-50%);
+            color: var(--primary);
+            text-decoration: none;
+            font-weight: 500;
+        }
+
+        h1 {
+            font-size: 2.5rem;
+            margin-bottom: 0.5rem;
+            background: linear-gradient(to right, #60a5fa, #a78bfa);
+            background-clip: text;
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .card {
+            background: var(--card-bg);
+            backdrop-filter: blur(10px);
+            border: 1px solid var(--border-color);
+            border-radius: 1rem;
+            padding: 2rem;
+            margin-bottom: 1.5rem;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+        }
+
+        .form-group {
+            margin-bottom: 1rem;
+        }
+
+        input[type="text"],
+        input[type="password"] {
+            width: 100%;
+            padding: 0.75rem;
+            border-radius: 0.5rem;
+            border: 1px solid var(--border-color);
+            background: rgba(15, 23, 42, 0.5);
+            color: white;
+            box-sizing: border-box;
+            margin-bottom: 1rem;
+        }
+
+        button {
+            background-color: var(--primary);
+            color: white;
+            border: none;
+            padding: 0.75rem 1.5rem;
+            border-radius: 0.5rem;
+            font-size: 1rem;
+            font-weight: 500;
+            cursor: pointer;
+            transition: background-color 0.2s;
+            width: 100%;
+        }
+
+        button:hover {
+            background-color: var(--primary-hover);
+        }
+
+        button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        /* Status Section */
+        .status-badge {
+            display: inline-block;
+            padding: 0.25rem 0.75rem;
+            border-radius: 9999px;
+            font-size: 0.75rem;
+            font-weight: 500;
+            text-transform: uppercase;
+        }
+
+        .status-badge.pending { background: #eab308; color: #713f12; }
+        .status-badge.running { background: #3b82f6; color: #eff6ff; }
+        .status-badge.succeeded { background: #22c55e; color: #f0fdf4; }
+        .status-badge.failed { background: #ef4444; color: #fef2f2; }
+        .status-badge.created { background: #64748b; color: #f8fafc; }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 1rem;
+        }
+
+        th, td {
+            padding: 0.75rem;
+            text-align: left;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        th {
+            font-weight: 600;
+            color: #94a3b8;
+            font-size: 0.875rem;
+            text-transform: uppercase;
+        }
+
+        td {
+            font-size: 0.9rem;
+        }
+
+        .missing-data {
+            color: #94a3b8;
+            font-style: italic;
+            padding: 1rem;
+            text-align: center;
+        }
+
+        .loader {
+            display: inline-block;
+            width: 1rem;
+            height: 1rem;
+            border: 2px solid rgba(255,255,255,0.3);
+            border-radius: 50%;
+            border-top-color: #fff;
+            animation: spin 1s ease-in-out infinite;
+            margin-left: 0.5rem;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        #error-message {
+            color: #ef4444;
+            margin-top: 1rem;
+            text-align: center;
+        }
+
+        .dashboard-content {
+            display: none;
+        }
+
+        .grid-2 {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 1.5rem;
+        }
+
+        .flex-between {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .metric-card {
+            background: rgba(15, 23, 42, 0.5);
+            border: 1px solid var(--border-color);
+            padding: 1rem;
+            border-radius: 0.5rem;
+        }
+        
+        .metric-title {
+            color: #94a3b8;
+            font-size: 0.875rem;
+            margin-bottom: 0.25rem;
+        }
+        
+        .metric-value {
+            font-size: 1.5rem;
+            font-weight: 600;
+            color: var(--primary);
+        }
+        
+        pre {
+            background: rgba(0, 0, 0, 0.2);
+            padding: 0.5rem;
+            border-radius: 0.25rem;
+            overflow-x: auto;
+            font-size: 0.8rem;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <a href="/bbro" class="back-link">&larr; Back to App</a>
+            <h1>ML Dashboard</h1>
+            <p>Observability for active models and recent processing</p>
+        </header>
+
+        <div class="card" id="auth-card">
+            <h3>API Credentials</h3>
+            <p style="font-size: 0.9rem; color: #94a3b8; margin-bottom: 1rem;">Dashboard requires valid credentials to access system telemetry.</p>
+            <div class="form-group">
+                <input type="text" id="username" placeholder="Username" value="w0nts4y">
+                <input type="password" id="password" placeholder="Password" value="v3ryc00l">
+            </div>
+            <button id="load-btn">Load Dashboard Data</button>
+            <div id="error-message"></div>
+        </div>
+
+        <div id="dashboard-content" class="dashboard-content">
+            <div class="grid-2">
+                <div class="card">
+                    <h3>Active Model</h3>
+                    <div id="active-model-container">
+                        <div class="loader"></div>
+                    </div>
+                </div>
+                
+                <div class="card">
+                    <h3>Metrics Summary (Latest Run)</h3>
+                    <div id="metrics-summary-container">
+                        <div class="loader"></div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card">
+                <h3>Recent Jobs</h3>
+                <div id="recent-jobs-container" style="overflow-x: auto;">
+                    <div class="loader"></div>
+                </div>
+            </div>
+
+            <div class="card">
+                <h3>Recent Training Runs</h3>
+                <div id="recent-runs-container" style="overflow-x: auto;">
+                    <div class="loader"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // DOM Elements
+        const usernameInput = document.getElementById('username');
+        const passwordInput = document.getElementById('password');
+        const loadBtn = document.getElementById('load-btn');
+        const errorMsg = document.getElementById('error-message');
+        
+        const authCard = document.getElementById('auth-card');
+        const dashboardContent = document.getElementById('dashboard-content');
+        
+        const activeModelContainer = document.getElementById('active-model-container');
+        const metricsSummaryContainer = document.getElementById('metrics-summary-container');
+        const recentJobsContainer = document.getElementById('recent-jobs-container');
+        const recentRunsContainer = document.getElementById('recent-runs-container');
+
+        // Restore auth from local storage if any
+        if (localStorage.getItem('hd_username')) usernameInput.value = localStorage.getItem('hd_username');
+        if (localStorage.getItem('hd_password')) passwordInput.value = localStorage.getItem('hd_password');
+
+        const getAuthHeaders = () => {
+            const u = usernameInput.value;
+            const p = passwordInput.value;
+            localStorage.setItem('hd_username', u);
+            localStorage.setItem('hd_password', p);
+            return {
+                'Authorization': 'Basic ' + btoa(u + ':' + p)
+            };
+        };
+
+        const formatDate = (isoString) => {
+            if (!isoString) return '-';
+            const d = new Date(isoString);
+            return d.toLocaleString();
+        };
+
+        const calcDuration = (start, end) => {
+            if (!start || !end) return '-';
+            const s = new Date(start);
+            const e = new Date(end);
+            return ((e - s) / 1000).toFixed(1) + 's';
+        };
+
+        const renderActiveModel = (model) => {
+            if (!model) {
+                activeModelContainer.innerHTML = '<div class="missing-data">No active model configured or model not found in DB.</div>';
+                return;
+            }
+            
+            activeModelContainer.innerHTML = `
+                <div class="metric-card" style="margin-bottom: 1rem;">
+                    <div class="metric-title">Name & Version</div>
+                    <div class="metric-value">${model.name} <span style="font-size: 1rem; color: #94a3b8;">${model.version}</span></div>
+                </div>
+                <div class="grid-2">
+                    <div>
+                        <div class="metric-title">Task</div>
+                        <div>${model.task}</div>
+                    </div>
+                    <div>
+                        <div class="metric-title">Created</div>
+                        <div style="font-size: 0.9rem;">${formatDate(model.created_at)}</div>
+                    </div>
+                </div>
+                <div style="margin-top: 1rem; font-size: 0.8rem; color: #94a3b8; font-family: monospace;">
+                    ID: ${model.id}
+                </div>
+            `;
+        };
+
+        const renderRecentJobs = (jobs) => {
+            if (!jobs || jobs.length === 0) {
+                recentJobsContainer.innerHTML = '<div class="missing-data">No recent jobs found.</div>';
+                return;
+            }
+
+            let html = `
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Status</th>
+                            <th>Job ID</th>
+                            <th>Created</th>
+                            <th>Duration</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+            `;
+
+            jobs.forEach(job => {
+                html += `
+                    <tr>
+                        <td><span class="status-badge ${job.status}">${job.status}</span></td>
+                        <td style="font-family: monospace; font-size: 0.8rem;">${job.id.substring(0, 8)}...</td>
+                        <td>${formatDate(job.created_at)}</td>
+                        <td>${calcDuration(job.started_at, job.finished_at)}</td>
+                    </tr>
+                `;
+            });
+
+            html += `</tbody></table>`;
+            recentJobsContainer.innerHTML = html;
+        };
+
+        const renderRecentRuns = (runs) => {
+            if (!runs || runs.length === 0) {
+                recentRunsContainer.innerHTML = '<div class="missing-data">No recent training runs found.</div>';
+                metricsSummaryContainer.innerHTML = '<div class="missing-data">No training data available.</div>';
+                return;
+            }
+
+            // Render table
+            let html = `
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Status</th>
+                            <th>Created</th>
+                            <th>Metrics</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+            `;
+
+            runs.forEach(run => {
+                const metricsStr = Object.keys(run.metrics).length > 0 
+                    ? Object.entries(run.metrics).map(([k,v]) => `${k}: ${typeof v === 'number' ? v.toFixed(4) : v}`).join(', ')
+                    : 'N/A';
+                    
+                html += `
+                    <tr>
+                        <td><span class="status-badge ${run.status}">${run.status}</span></td>
+                        <td>${formatDate(run.created_at)}</td>
+                        <td style="font-size: 0.8rem;">${metricsStr}</td>
+                    </tr>
+                `;
+            });
+
+            html += `</tbody></table>`;
+            recentRunsContainer.innerHTML = html;
+
+            // Render metrics summary for latest run
+            const latest = runs[0];
+            if (Object.keys(latest.metrics).length > 0) {
+                let summaryHtml = '<div class="grid-2">';
+                for (const [key, value] of Object.entries(latest.metrics)) {
+                    // Only show first 4 metrics if many
+                    const displayValue = typeof value === 'number' ? value.toFixed(4) : value;
+                    summaryHtml += `
+                        <div class="metric-card">
+                            <div class="metric-title">${key}</div>
+                            <div class="metric-value">${displayValue}</div>
+                        </div>
+                    `;
+                }
+                summaryHtml += '</div>';
+                
+                if (runs.length > 1 && Object.keys(runs[1].metrics).length > 0) {
+                    const prev = runs[1];
+                    // Very simple improvement highlights
+                    summaryHtml += '<div style="margin-top: 1rem; padding-top: 1rem; border-top: 1px solid var(--border-color);">';
+                    summaryHtml += '<h4 style="margin-top: 0; color: #94a3b8; font-size: 0.9rem;">Improvement vs Previous Run</h4>';
+                    summaryHtml += '<ul style="margin: 0; padding-left: 1.5rem; font-size: 0.9rem;">';
+                    
+                    let compared = false;
+                    for (const key of Object.keys(latest.metrics)) {
+                        if (prev.metrics[key] !== undefined && typeof latest.metrics[key] === 'number') {
+                            const diff = latest.metrics[key] - prev.metrics[key];
+                            const prefix = diff > 0 ? '+' : '';
+                            const color = diff > 0 ? '#22c55e' : (diff < 0 ? '#ef4444' : '#94a3b8');
+                            summaryHtml += `<li>${key}: <span style="color: ${color}">${prefix}${diff.toFixed(4)}</span></li>`;
+                            compared = true;
+                        }
+                    }
+                    if (!compared) summaryHtml += '<li>No comparable metrics.</li>';
+                    summaryHtml += '</ul></div>';
+                }
+                
+                metricsSummaryContainer.innerHTML = summaryHtml;
+            } else {
+                metricsSummaryContainer.innerHTML = '<div class="missing-data">No metrics in latest run.</div>';
+            }
+        };
+
+        loadBtn.addEventListener('click', async () => {
+            errorMsg.textContent = '';
+            loadBtn.disabled = true;
+            loadBtn.innerHTML = 'Loading Dashboard... <span class="loader"></span>';
+            
+            try {
+                const response = await fetch('/api/dashboard/stats', {
+                    headers: getAuthHeaders()
+                });
+
+                if (!response.ok) {
+                    if (response.status === 401) throw new Error("Unauthorized. Check credentials.");
+                    throw new Error(`Failed to load: ${response.statusText}`);
+                }
+
+                const data = await response.json();
+                
+                // Hide auth, show dashboard
+                authCard.style.display = 'none';
+                dashboardContent.style.display = 'block';
+                
+                // Render pieces
+                renderActiveModel(data.active_model);
+                renderRecentJobs(data.recent_jobs);
+                renderRecentRuns(data.recent_training_runs);
+                
+            } catch (err) {
+                errorMsg.textContent = err.message;
+                loadBtn.disabled = false;
+                loadBtn.innerHTML = 'Load Dashboard Data';
+            }
+        });
+        
+        // Auto-load if credentials exist
+        if (usernameInput.value && passwordInput.value) {
+            loadBtn.click();
+        }
+    </script>
+</body>
+</html>

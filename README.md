@@ -1,217 +1,133 @@
 # Hold Detection – Production-Oriented ML Pipeline
 
-A production-shaped object detection pipeline for climbing wall hold detection.
+## Project Overview
 
-This project demonstrates how to move from a notebook-trained YOLO model to a scalable backend system with:
+This project provides a production-shaped machine learning pipeline for climbing wall hold detection. The goal is to detect and locate climbing holds on a wall from an uploaded image using a trained object detection model.
 
-- Asynchronous job processing
-- Model versioning
-- Training metadata tracking
-- Database-backed inference pipeline
-- Clean separation between API and worker
-- Future-ready architecture for scaling and GPU deployment
+It demonstrates how to transition from a notebook-trained YOLO model to a scalable backend system. It features robust, reliable asynchronous job processing, model version management, training metadata tracking, and a database-backed inference pipeline. 
 
 ---
 
-## Overview
+## Architecture Overview
 
-The system is deployed on a VPS and will be exposed publicly using Nginx as a reverse proxy.
+The system architecture is designed for scalability and failure isolation. It decouples the user-facing API from long-running machine learning inference jobs. 
 
-Architecture:
-
-Client (HTML / App)
-↓
-FastAPI API (authentication + upload handling)
-↓
-PostgreSQL (jobs + metadata)
-↓
-Worker Process (async inference)
-↓
-Predictions + Annotated Image Storage
-
----
-
-## Core Features
-
-### 1. Asynchronous Inference
-
-Uploads create a `Job` record in PostgreSQL.
-
-A background worker:
-
-- Polls pending jobs
-- Loads the active model
-- Runs inference
-- Stores predictions in the database
-- Saves annotated result image
-- Updates job status
-
-This design allows:
-
-- Horizontal scaling (multiple workers)
-- Future GPU migration without API changes
-- Retry logic
-- Failure isolation
-
----
-
-### 2. Model Versioning
-
-The system stores models in a `models` table:
-
-- name
-- version
-- weights URI
-- training run reference
-- metadata
-
-The active model is controlled via environment variable:
+The typical pipeline flows as follows:
 
 ```
-ACTIVE_MODEL_ID=<uuid>
+image upload
+   ↓
+job creation (API)
+   ↓
+async worker inference (YOLO model)
+   ↓
+predictions stored (Database)
+   ↓
+annotated result image generated
 ```
 
-This allows:
-
-- Re-running inference with new models
-- Tracking model evolution
-- Safe production upgrades
+This ensures the main web application remains responsive while heavy ML computations happen concurrently on background workers.
 
 ---
 
-### 3. Training Run Tracking
+## Key Components
 
-Schema supports:
+The hold detection system is composed of the following distinct components:
 
-- datasets
-- training_runs
-- artifacts (weights, plots, metrics)
-- reproducibility metadata
-
-Training is currently done externally (Google Colab GPU),
-and artifacts are registered in the database after export.
-
-Colab is NOT part of the production inference pipeline.
+- **FastAPI backend**: The primary API gateway handling HTTP interactions, job creation, and database queries.
+- **Async worker**: A continuously running background process that executes the machine learning inference tasks.
+- **PostgreSQL database**: Stores job states, model metadata, training run tracking, and individual hold predictions.
+- **YOLO model inference**: Uses a fine-tuned computer vision model to detect bounding boxes around climbing holds.
+- **Local storage abstraction**: Handles saving raw uploads and annotated results safely to the file system.
 
 ---
 
-### 4. Database Schema (High-Level)
+## Repository Structure
 
-Core Tables:
-
-- datasets
-- training_runs
-- artifacts
-- models
-- uploads
-- jobs
-- predictions
-
-The schema supports:
-
-- Future segmentation support
-- Reprocessing historical uploads
-- Route-building features
-- Model performance tracking
-
----
-
-## Project Structure
+The project is structured logically separating concerns between API routing, business logic, asynchronous tasks, and database models.
 
 ```
 holddetection/
 │
 ├── app/
-│   ├── api/
-│   ├── core/
-│   ├── db/
-│   ├── services/
-│   └── workers/
+│   ├── api/          # FastAPI route definitions and request validation
+│   ├── core/         # Core application settings, logging, and constants
+│   ├── db/           # SQLAlchemy models and database sessions
+│   ├── services/     # Business logic, object interactions, and workflows
+│   └── workers/      # Async polling logic and ML model inference
 │
-├── alembic/
-├── storage/
-├── requirements.txt
-└── README.md
+├── alembic/          # Database schema migrations
+├── storage/          # Data volume containing models, uploads, and results
+├── requirements.txt  # Python package dependencies
+└── README.md         # Project documentation
 ```
 
-Separation of concerns:
+---
 
-- API layer → FastAPI
-- Business logic → services/
-- DB models → db/
-- Async processing → workers/
-- Storage abstraction → configurable
+## Running Locally
+
+To run the full stack locally for development or testing:
+
+1. **Create virtual environment**: Ensure you are using an isolated Python ecosystem.
+   ```bash
+   python -m venv venv
+   source venv/bin/activate
+   ```
+
+2. **Install dependencies**: Install all required packages.
+   ```bash
+   pip install -r requirements.txt
+   ```
+
+3. **Run uvicorn**: Start the FastAPI development server. This runs the frontend application API.
+   ```bash
+   uvicorn app.main:app --host 127.0.0.1 --port 8010
+   ```
+
+4. **Run worker**: Open a second terminal (activate the `venv`) and start the background inference processor.
+   ```bash
+   python -m app.workers.inference_worker
+   ```
 
 ---
 
-## Security (MVP)
+## Environment Variables
 
-Currently uses HTTP Basic Auth for endpoint protection.
+All configuration, including model selection, database connection strings, and application settings, are managed via environment variables.
 
-This is intentionally simple and will be replaced with:
+Ensure you create a `.env` file in the root directory. Credentials and secrets **must not** be committed to the repository.
 
-- JWT
-- OAuth
-- or API key system
+A safe `.env.example` structure looks like this:
 
-before public release.
-
----
-
-## Storage Strategy
-
-Currently uses local filesystem:
-
-- storage/uploads
-- storage/results
-- storage/models
-
-Planned upgrade:
-
-- S3-compatible object storage
-
-The database only stores URIs, so storage backend is swappable.
+```
+# .env.example
+DATABASE_URL=postgresql://user:password@localhost/dbname
+ACTIVE_MODEL_ID=00000000-0000-0000-0000-000000000000
+API_HOST=127.0.0.1
+API_PORT=8010
+```
 
 ---
 
-Security Note:
-No credentials or model weights are stored in this repository.
-All secrets are loaded from environment variables.
+## Storage
+
+Currently, the system relies on local filesystem storage holding files in the `storage/` directory:
+
+- `storage/uploads`: Originally submitted images.
+- `storage/results`: Output annotated images generated by the worker.
+- `storage/models`: Serialized weights for the YOLO models.
+
+**Future Upgrade**: The database stores file paths as generalized URIs, meaning the application is designed to support a configurable, S3-compatible object storage backend seamlessly in later revisions.
 
 ---
 
-## Deployment
+## Future Roadmap
 
-Deployed on:
+The system provides a robust base, and future additions will significantly enhance its capabilities:
 
-- VPS
-- PostgreSQL
-- FastAPI (Uvicorn)
-- Nginx reverse proxy (planned for public exposure)
-
-Worker runs as separate process (future: systemd service or container).
-
----
-
-## Next Steps
-
-- Add systemd service for worker + API
-- Add Dockerization
-- Add HTML upload UI
-- Add segmentation model support
-- Add GPU worker node
-- Add user authentication
-- Add route-building feature on top of predictions
-- Add model performance dashboard
-
----
-
-## Goal
-
-The goal of this project is to demonstrate:
-
-- Transition from ML experimentation to production systems
-- Proper async job modeling
-- Database-driven inference workflows
-- Model lifecycle management
-- Scalable architecture design
+- **ML dashboard**: Visualize overall system health, inference speed, and active model utilization.
+- **Dataset export pipeline**: Extract flagged predictions or user corrections back into a clean dataset for re-training.
+- **Wall object model**: Build abstractions to represent the physical layout and topological zones of the climbing wall.
+- **Annotation editing UI**: Allow users to interactively correct, add, or remove hold bounding boxes generated by the AI.
+- **Route building**: Enable users to group selected holds together to formally design, name, and grade a boulder problem.
+- **Mobile app later**: Provide climbers an on-the-go application to quickly snap wall pictures and visualize climbing routes.
