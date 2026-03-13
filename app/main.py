@@ -7,8 +7,10 @@ from app.db.session import get_db
 from app.db.models import Upload, Job, JobStatus
 from app.core.settings import settings
 from app.core.security import basic_auth
+from app.core.storage import make_local_uri, resolve_storage_uri
 
 from fastapi.responses import FileResponse
+from fastapi import HTTPException
 
 app = FastAPI(title="Hold Detection API")
 
@@ -29,7 +31,7 @@ def create_upload(
 
     upload = Upload(
         id=upload_id,
-        original_uri=str(file_path)
+        original_uri=make_local_uri(str(file_path))
     )
     db.add(upload)
     db.commit()
@@ -83,7 +85,14 @@ def get_predictions(job_id: str, db: Session = Depends(get_db), username: str = 
 @app.get("/jobs/{job_id}/image")
 def get_result_image(job_id: str, db: Session = Depends(get_db), username: str = Depends(basic_auth)):
     job = db.query(Job).filter(Job.id == job_id).first()
-    if not job or not job.result_annotated_uri:
-        return {"error": "not ready"}
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+        
+    if not job.result_annotated_uri:
+        raise HTTPException(status_code=404, detail="Image not ready or not available")
 
-    return FileResponse(job.result_annotated_uri)
+    local_path = resolve_storage_uri(job.result_annotated_uri)
+    if not Path(local_path).exists():
+        raise HTTPException(status_code=404, detail="File missing on disk")
+
+    return FileResponse(local_path)
