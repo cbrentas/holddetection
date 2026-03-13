@@ -456,7 +456,7 @@
             loadBtn.innerHTML = 'Loading Dashboard... <span class="loader"></span>';
             
             try {
-                const response = await fetch('/api/dashboard/stats', {
+                const response = await fetch('/bbro/api/dashboard/stats', {
                     headers: getAuthHeaders()
                 });
 

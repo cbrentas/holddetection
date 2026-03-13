@@ -25,6 +25,4 @@ alembic/versions/*.pyc
 .DS_Store
 
 
-#AGENT
 tnega/*
-AGENT_RULES.md
