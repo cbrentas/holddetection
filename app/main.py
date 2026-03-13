@@ -11,8 +11,17 @@ from app.core.storage import make_local_uri, resolve_storage_uri
 
 from fastapi.responses import FileResponse
 from fastapi import HTTPException
+from fastapi.staticfiles import StaticFiles
+import os
 
 app = FastAPI(title="Hold Detection API")
+
+# Mount frontend
+app.mount("/static", StaticFiles(directory="app/static"), name="static")
+
+@app.get("/")
+def read_index():
+    return FileResponse("app/static/index.html")
 
 # Ensure directories exist
 Path(settings.STORAGE_UPLOAD_DIR).mkdir(parents=True, exist_ok=True)

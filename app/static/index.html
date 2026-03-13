@@ -1,0 +1,438 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hold Detection Pipeline</title>
+    <style>
+        :root {
+            --bg-color: #0f172a;
+            --card-bg: rgba(30, 41, 59, 0.7);
+            --text-color: #f8fafc;
+            --primary: #3b82f6;
+            --primary-hover: #2563eb;
+            --border-color: rgba(255, 255, 255, 0.1);
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            margin: 0;
+            padding: 2rem;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        .container {
+            width: 100%;
+            max-width: 800px;
+        }
+
+        header {
+            text-align: center;
+            margin-bottom: 2rem;
+        }
+
+        h1 {
+            font-size: 2.5rem;
+            margin-bottom: 0.5rem;
+            background: linear-gradient(to right, #60a5fa, #a78bfa);
+            background-clip: text;
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .card {
+            background: var(--card-bg);
+            backdrop-filter: blur(10px);
+            border: 1px solid var(--border-color);
+            border-radius: 1rem;
+            padding: 2rem;
+            margin-bottom: 1.5rem;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+        }
+
+        .form-group {
+            margin-bottom: 1rem;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 0.5rem;
+            font-weight: 500;
+        }
+
+        input[type="text"],
+        input[type="password"] {
+            width: 100%;
+            padding: 0.75rem;
+            border-radius: 0.5rem;
+            border: 1px solid var(--border-color);
+            background: rgba(15, 23, 42, 0.5);
+            color: white;
+            box-sizing: border-box;
+            margin-bottom: 1rem;
+        }
+
+        .file-upload-wrapper {
+            position: relative;
+            width: 100%;
+            height: 150px;
+            border: 2px dashed var(--primary);
+            border-radius: 0.5rem;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            background: rgba(59, 130, 246, 0.05);
+            margin-bottom: 1rem;
+        }
+
+        .file-upload-wrapper:hover {
+            background: rgba(59, 130, 246, 0.1);
+        }
+
+        .file-upload-wrapper input[type="file"] {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            opacity: 0;
+            cursor: pointer;
+        }
+
+        button {
+            background-color: var(--primary);
+            color: white;
+            border: none;
+            padding: 0.75rem 1.5rem;
+            border-radius: 0.5rem;
+            font-size: 1rem;
+            font-weight: 500;
+            cursor: pointer;
+            transition: background-color 0.2s;
+            width: 100%;
+        }
+
+        button:hover {
+            background-color: var(--primary-hover);
+        }
+
+        button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        /* Status Section */
+        #status-container {
+            display: none;
+        }
+
+        .status-badge {
+            display: inline-block;
+            padding: 0.25rem 0.75rem;
+            border-radius: 9999px;
+            font-size: 0.875rem;
+            font-weight: 500;
+            text-transform: uppercase;
+        }
+
+        .status-badge.pending { background: #eab308; color: #713f12; }
+        .status-badge.running { background: #3b82f6; color: #eff6ff; }
+        .status-badge.succeeded { background: #22c55e; color: #f0fdf4; }
+        .status-badge.failed { background: #ef4444; color: #fef2f2; }
+
+        /* Results Section */
+        #results-container {
+            display: none;
+        }
+
+        .result-image-container {
+            width: 100%;
+            border-radius: 0.5rem;
+            overflow: hidden;
+            margin-bottom: 1rem;
+            border: 1px solid var(--border-color);
+        }
+
+        .result-image-container img {
+            width: 100%;
+            height: auto;
+            display: block;
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 1rem;
+        }
+
+        .stat-box {
+            background: rgba(15, 23, 42, 0.5);
+            border: 1px solid var(--border-color);
+            padding: 1rem;
+            border-radius: 0.5rem;
+            text-align: center;
+        }
+
+        .stat-value {
+            font-size: 1.5rem;
+            font-weight: 600;
+            color: var(--primary);
+        }
+
+        .loader {
+            display: inline-block;
+            width: 1rem;
+            height: 1rem;
+            border: 2px solid rgba(255,255,255,0.3);
+            border-radius: 50%;
+            border-top-color: #fff;
+            animation: spin 1s ease-in-out infinite;
+            margin-left: 0.5rem;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        #error-message {
+            color: #ef4444;
+            margin-top: 1rem;
+            text-align: center;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Hold Detection Pipeline</h1>
+            <p>Upload a climbing wall image for automatic hold detection</p>
+        </header>
+
+        <div class="card" id="auth-card">
+            <h3>API Credentials</h3>
+            <div class="form-group">
+                <input type="text" id="username" placeholder="Username" value="w0nts4y">
+                <input type="password" id="password" placeholder="Password" value="v3ryc00l">
+            </div>
+        </div>
+
+        <div class="card" id="upload-card">
+            <div class="file-upload-wrapper" id="drop-zone">
+                <span id="file-name-display">Click or drag image here</span>
+                <input type="file" id="image-upload" accept="image/*">
+            </div>
+            <button id="submit-btn" disabled>Upload & Process</button>
+            <div id="error-message"></div>
+        </div>
+
+        <div class="card" id="status-container">
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+                <h3>Job Status</h3>
+                <span id="job-status-badge" class="status-badge pending">Pending</span>
+            </div>
+            <p id="job-id-display" style="font-family: monospace; font-size: 0.8rem; color: #94a3b8;"></p>
+            <p id="progress-text">Waiting to start...</p>
+        </div>
+
+        <div class="card" id="results-container">
+            <h3>Results</h3>
+            <div class="result-image-container">
+                <img id="result-image" alt="Annotated result will appear here">
+            </div>
+            <div class="stats-grid">
+                <div class="stat-box">
+                    <div class="stat-value" id="stat-count">-</div>
+                    <div class="stat-label">Holds Detected</div>
+                </div>
+                <div class="stat-box">
+                    <div class="stat-value" id="stat-time">-</div>
+                    <div class="stat-label">Inference Time</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // DOM Elements
+        const imageUpload = document.getElementById('image-upload');
+        const fileNameDisplay = document.getElementById('file-name-display');
+        const submitBtn = document.getElementById('submit-btn');
+        const usernameInput = document.getElementById('username');
+        const passwordInput = document.getElementById('password');
+        const errorMsg = document.getElementById('error-message');
+        
+        const statusContainer = document.getElementById('status-container');
+        const statusBadge = document.getElementById('job-status-badge');
+        const progressText = document.getElementById('progress-text');
+        const jobIdDisplay = document.getElementById('job-id-display');
+        
+        const resultsContainer = document.getElementById('results-container');
+        const resultImage = document.getElementById('result-image');
+        const statCount = document.getElementById('stat-count');
+        const statTime = document.getElementById('stat-time');
+
+        let currentFile = null;
+        let pollInterval = null;
+
+        // Restore auth from local storage if any
+        if (localStorage.getItem('hd_username')) usernameInput.value = localStorage.getItem('hd_username');
+        if (localStorage.getItem('hd_password')) passwordInput.value = localStorage.getItem('hd_password');
+
+        // File selection handling
+        imageUpload.addEventListener('change', (e) => {
+            if (e.target.files.length > 0) {
+                currentFile = e.target.files[0];
+                fileNameDisplay.textContent = currentFile.name;
+                submitBtn.disabled = false;
+            } else {
+                currentFile = null;
+                fileNameDisplay.textContent = 'Click or drag image here';
+                submitBtn.disabled = true;
+            }
+        });
+
+        const getAuthHeaders = () => {
+            const u = usernameInput.value;
+            const p = passwordInput.value;
+            localStorage.setItem('hd_username', u);
+            localStorage.setItem('hd_password', p);
+            return {
+                'Authorization': 'Basic ' + btoa(u + ':' + p)
+            };
+        };
+
+        const showError = (msg) => {
+            errorMsg.textContent = msg;
+            submitBtn.disabled = false;
+            submitBtn.innerHTML = 'Upload & Process';
+        };
+
+        const updateStatus = (status, text) => {
+            statusBadge.className = `status-badge ${status}`;
+            statusBadge.textContent = status;
+            progressText.innerHTML = text;
+        };
+
+        // Form submission
+        submitBtn.addEventListener('click', async () => {
+            if (!currentFile) return;
+            
+            errorMsg.textContent = '';
+            submitBtn.disabled = true;
+            submitBtn.innerHTML = 'Uploading... <span class="loader"></span>';
+            statusContainer.style.display = 'none';
+            resultsContainer.style.display = 'none';
+
+            const formData = new FormData();
+            formData.append('file', currentFile);
+
+            try {
+                const response = await fetch('/uploads', {
+                    method: 'POST',
+                    headers: getAuthHeaders(),
+                    body: formData
+                });
+
+                if (!response.ok) {
+                    if (response.status === 401) throw new Error("Unauthorized. Check credentials.");
+                    throw new Error(`Upload failed: ${response.statusText}`);
+                }
+
+                const data = await response.json();
+                startPolling(data.job_id);
+                
+            } catch (err) {
+                showError(err.message);
+            }
+        });
+
+        const startPolling = (jobId) => {
+            submitBtn.innerHTML = 'Upload & Process';
+            statusContainer.style.display = 'block';
+            jobIdDisplay.textContent = `Job ID: ${jobId}`;
+            updateStatus('pending', 'Polling API... <span class="loader"></span>');
+
+            if (pollInterval) clearInterval(pollInterval);
+
+            pollInterval = setInterval(async () => {
+                try {
+                    const response = await fetch(`/jobs/${jobId}`, {
+                        headers: getAuthHeaders()
+                    });
+                    
+                    if (!response.ok) throw new Error("Failed to fetch status");
+                    
+                    const jobDetails = await response.json();
+                    
+                    if (jobDetails.status === 'succeeded') {
+                        clearInterval(pollInterval);
+                        updateStatus('succeeded', 'Processing complete!');
+                        fetchResults(jobId);
+                    } else if (jobDetails.status === 'failed') {
+                        clearInterval(pollInterval);
+                        let errMsg = jobDetails.error ? `: ${jobDetails.error}` : '';
+                        updateStatus('failed', `Job Failed${errMsg}`);
+                    } else if (jobDetails.status === 'running') {
+                        updateStatus('running', 'Model is crunching numbers... <span class="loader"></span>');
+                    }
+                    
+                } catch (err) {
+                    clearInterval(pollInterval);
+                    updateStatus('failed', err.message);
+                }
+            }, 2000); // poll every 2 seconds
+        };
+
+        const fetchResults = async (jobId) => {
+            try {
+                // Fetch predictions JSON for counts
+                const predResponse = await fetch(`/jobs/${jobId}/predictions`, {
+                    headers: getAuthHeaders()
+                });
+                
+                if (predResponse.ok) {
+                    const preds = await predResponse.json();
+                    statCount.textContent = preds.length;
+                }
+
+                // Show the image by fetching as blob so we can attach auth headers
+                const imgResponse = await fetch(`/jobs/${jobId}/image`, {
+                    headers: getAuthHeaders()
+                });
+
+                if (imgResponse.ok) {
+                    const blob = await imgResponse.blob();
+                    const objectURL = URL.createObjectURL(blob);
+                    resultImage.src = objectURL;
+                    resultsContainer.style.display = 'block';
+                } else {
+                    throw new Error("Could not load result image");
+                }
+                
+                // Attempt to calc approximate time if available via a second fetch
+                // the /jobs endpoint returns started_at and finished_at
+                const jobInfo = await fetch(`/jobs/${jobId}`, { headers: getAuthHeaders() });
+                if (jobInfo.ok) {
+                    const infoData = await jobInfo.json();
+                    if(infoData.started_at && infoData.finished_at) {
+                        const start = new Date(infoData.started_at);
+                        const end = new Date(infoData.finished_at);
+                        const diffSecs = ((end - start) / 1000).toFixed(1);
+                        statTime.textContent = `${diffSecs}s`;
+                    }
+                }
+
+            } catch (err) {
+                errorMsg.textContent = "Error loading results: " + err.message;
+            }
+        };
+
+    </script>
+</body>
+</html>
