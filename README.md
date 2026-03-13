@@ -2,132 +2,118 @@
 
 ## Project Overview
 
-This project provides a production-shaped machine learning pipeline for climbing wall hold detection. The goal is to detect and locate climbing holds on a wall from an uploaded image using a trained object detection model.
+This project is a machine learning backend for climbing wall hold detection. The goal is to detect and locate climbing holds on a wall from an uploaded image using a trained object detection model. It demonstrates a scalable approach transitioning from a notebook-trained model to a production system.
 
-It demonstrates how to transition from a notebook-trained YOLO model to a scalable backend system. It features robust, reliable asynchronous job processing, model version management, training metadata tracking, and a database-backed inference pipeline. 
+## System Architecture
 
----
+The architecture relies on an asynchronous job processing pipeline to keep the API responsive while handling heavy object detection tasks.
 
-## Architecture Overview
-
-The system architecture is designed for scalability and failure isolation. It decouples the user-facing API from long-running machine learning inference jobs. 
-
-The typical pipeline flows as follows:
+The pipeline flows as follows:
 
 ```
 image upload
    ↓
-job creation (API)
+job creation
    ↓
-async worker inference (YOLO model)
+worker processing
    ↓
-predictions stored (Database)
+YOLO inference
    ↓
-annotated result image generated
+predictions stored
+   ↓
+annotated image generated
 ```
 
-This ensures the main web application remains responsive while heavy ML computations happen concurrently on background workers.
+## Components
 
----
+The system is composed of several distinct and loosely coupled components:
 
-## Key Components
-
-The hold detection system is composed of the following distinct components:
-
-- **FastAPI backend**: The primary API gateway handling HTTP interactions, job creation, and database queries.
-- **Async worker**: A continuously running background process that executes the machine learning inference tasks.
-- **PostgreSQL database**: Stores job states, model metadata, training run tracking, and individual hold predictions.
-- **YOLO model inference**: Uses a fine-tuned computer vision model to detect bounding boxes around climbing holds.
-- **Local storage abstraction**: Handles saving raw uploads and annotated results safely to the file system.
-
----
+- **FastAPI backend**: API gateway serving routes and managing the UI.
+- **Async inference worker**: Continuous background process running ML models.
+- **PostgreSQL database**: Stores metadata for models, datasets, jobs, and predictions.
+- **Storage abstraction**: Encapsulates file operations to allow easy switching of backend storage layers.
+- **ML experiment tracking**: Script-based tooling to track training metadata and versions.
+- **Dashboard**: Minimal UI for viewing system health, jobs, and experiments.
+- **nginx reverse proxy (external)**: Manages incoming production traffic.
 
 ## Repository Structure
 
-The project is structured logically separating concerns between API routing, business logic, asynchronous tasks, and database models.
+Key directories and their purpose:
 
-```
-holddetection/
-│
-├── app/
-│   ├── api/          # FastAPI route definitions and request validation
-│   ├── core/         # Core application settings, logging, and constants
-│   ├── db/           # SQLAlchemy models and database sessions
-│   ├── services/     # Business logic, object interactions, and workflows
-│   └── workers/      # Async polling logic and ML model inference
-│
-├── alembic/          # Database schema migrations
-├── storage/          # Data volume containing models, uploads, and results
-├── requirements.txt  # Python package dependencies
-└── README.md         # Project documentation
-```
-
----
+- `app/` - Main application package holding business logic.
+- `app/api/` - FastAPI routing and endpoints.
+- `app/core/` - Application settings, security, and the storage abstraction layer.
+- `app/workers/` - Background worker scripts (e.g., `inference_worker.py`).
+- `storage/` - Local filesystem volume for uploads, results, and models.
+- `scripts/` - Administrative and tooling scripts (e.g., ML registration).
+- `alembic/` - Database migration definitions and env.
 
 ## Running Locally
 
 To run the full stack locally for development or testing:
 
-1. **Create virtual environment**: Ensure you are using an isolated Python ecosystem.
+1. **Create virtual environment**: Ensure an isolated Python ecosystem.
    ```bash
    python -m venv venv
    source venv/bin/activate
    ```
 
-2. **Install dependencies**: Install all required packages.
+2. **Install dependencies**:
    ```bash
    pip install -r requirements.txt
    ```
 
-3. **Run uvicorn**: Start the FastAPI development server. This runs the frontend application API.
+3. **Run uvicorn**: Start the FastAPI development server.
    ```bash
-   uvicorn app.main:app --host 127.0.0.1 --port 8010
+   uvicorn app.main:app --host 127.0.0.1 --port 8010 --reload
    ```
 
-4. **Run worker**: Open a second terminal (activate the `venv`) and start the background inference processor.
+4. **Run worker**: Open a second terminal (activate the `venv`) and start the background processor.
    ```bash
    python -m app.workers.inference_worker
    ```
 
----
-
 ## Environment Variables
 
-All configuration, including model selection, database connection strings, and application settings, are managed via environment variables.
+Configuration is managed via environment variables. Ensure you create a `.env` file in the root directory. **Do not expose secrets or commit them to the repository.**
 
-Ensure you create a `.env` file in the root directory. Credentials and secrets **must not** be committed to the repository.
-
-A safe `.env.example` structure looks like this:
+A safe `.env.example`:
 
 ```
 # .env.example
+APP_ENV=dev
 DATABASE_URL=postgresql://user:password@localhost/dbname
 ACTIVE_MODEL_ID=00000000-0000-0000-0000-000000000000
-API_HOST=127.0.0.1
-API_PORT=8010
+API_USER=admin
+API_PASSWORD=secret
 ```
-
----
 
 ## Storage
 
-Currently, the system relies on local filesystem storage holding files in the `storage/` directory:
+Currently, files (uploaded images, annotated results, and model weights) are stored locally in the `storage/` directory. However, the system utilizes a **Storage Abstraction Layer** making the architecture ready to support S3-compatible storage or object storage backends in the future without changing the core logic.
 
-- `storage/uploads`: Originally submitted images.
-- `storage/results`: Output annotated images generated by the worker.
-- `storage/models`: Serialized weights for the YOLO models.
+## ML Experiment Tracking
 
-**Future Upgrade**: The database stores file paths as generalized URIs, meaning the application is designed to support a configurable, S3-compatible object storage backend seamlessly in later revisions.
+The repository provides simple tooling to track external ML experiments (e.g., runs from Google Colab) bridging tracking into the application's PostgreSQL database.
 
----
+You can register runs via scripts:
+```bash
+python scripts/register_dataset.py dataset.json
+python scripts/register_training_run.py training_run.json
+```
+
+These scripts insert datasets, training hyperparameters, metrics, artifacts, and optionally linked deployable models.
+
+## Deployment
+
+In production, the system runs on a VPS behind an nginx reverse proxy and operates via `systemd` services (`holddetection-api.service` and `holddetection-worker.service`) ensuring high availability and crash restarts.
 
 ## Future Roadmap
 
-The system provides a robust base, and future additions will significantly enhance its capabilities:
+Planned additions include:
 
-- **ML dashboard**: Visualize overall system health, inference speed, and active model utilization.
-- **Dataset export pipeline**: Extract flagged predictions or user corrections back into a clean dataset for re-training.
-- **Wall object model**: Build abstractions to represent the physical layout and topological zones of the climbing wall.
-- **Annotation editing UI**: Allow users to interactively correct, add, or remove hold bounding boxes generated by the AI.
-- **Route building**: Enable users to group selected holds together to formally design, name, and grade a boulder problem.
-- **Mobile app later**: Provide climbers an on-the-go application to quickly snap wall pictures and visualize climbing routes.
+- **Annotation editor**: Interface to adjust bounding boxes interactively.
+- **Dataset generation**: Pipelines to build new datasets from edited annotations.
+- **Automated training pipeline**: Triggering finetuning directly from the backend.
+- **Route creation tools**: Group holds into documented climbing boulders.
+- **Mobile application**: Fast and easy route building via mobile snapshots.

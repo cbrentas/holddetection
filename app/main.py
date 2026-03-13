@@ -7,48 +7,53 @@ from app.db.session import get_db
 from app.db.models import Upload, Job, JobStatus
 from app.core.settings import settings
 from app.core.security import basic_auth
-from app.core.storage import make_local_uri, resolve_storage_uri
+from app.core.storage.service import storage
 
 from fastapi.responses import FileResponse, RedirectResponse
 from fastapi import HTTPException
 from fastapi.staticfiles import StaticFiles
 import os
 
+from fastapi import APIRouter
+
 app = FastAPI(title="Hold Detection API")
+api_router = APIRouter(prefix="/bbro/api")
 
 # Mount frontend
 app.mount("/static", StaticFiles(directory="app/static"), name="static")
 
 @app.get("/")
 def read_index():
-    return RedirectResponse(url="/bbro")
+    return RedirectResponse(url="/bbro/")
 
-@app.get("/bbro")
+
+@app.get("/bbro", include_in_schema=False)
+def redirect_bbro():
+    return RedirectResponse(url="/bbro/", status_code=307)
+
+
+@app.get("/bbro/", include_in_schema=False)
 def read_bbro():
     return FileResponse("app/static/index.html")
 
-@app.get("/bbro/dashboard")
+
+@app.get("/bbro/dashboard", include_in_schema=False)
 def read_dashboard():
     return FileResponse("app/static/dashboard.html")
 
-# Ensure directories exist
-Path(settings.STORAGE_UPLOAD_DIR).mkdir(parents=True, exist_ok=True)
-
-@app.post("/uploads")
+@api_router.post("/uploads")
 def create_upload(
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
     username: str = Depends(basic_auth)
 ):
     upload_id = uuid.uuid4()
-    file_path = Path(settings.STORAGE_UPLOAD_DIR) / f"{upload_id}.jpg"
-
-    with open(file_path, "wb") as buffer:
-        shutil.copyfileobj(file.file, buffer)
+    
+    saved_uri = storage.save_uploaded_image(str(upload_id), file.file)
 
     upload = Upload(
         id=upload_id,
-        original_uri=make_local_uri(str(file_path))
+        original_uri=saved_uri
     )
     db.add(upload)
     db.commit()
@@ -67,7 +72,7 @@ def create_upload(
         "status": job.status
     }
 
-@app.get("/jobs/{job_id}")
+@api_router.get("/jobs/{job_id}")
 def get_job(job_id: str, db: Session = Depends(get_db), username: str = Depends(basic_auth)):
     job = db.query(Job).filter(Job.id == job_id).first()
     if not job:
@@ -80,7 +85,7 @@ def get_job(job_id: str, db: Session = Depends(get_db), username: str = Depends(
         "finished_at": job.finished_at
     }
 
-@app.get("/jobs/{job_id}/predictions")
+@api_router.get("/jobs/{job_id}/predictions")
 def get_predictions(job_id: str, db: Session = Depends(get_db), username: str = Depends(basic_auth)):
     job = db.query(Job).filter(Job.id == job_id).first()
     if not job:
@@ -99,7 +104,7 @@ def get_predictions(job_id: str, db: Session = Depends(get_db), username: str = 
 
 
 
-@app.get("/jobs/{job_id}/image")
+@api_router.get("/jobs/{job_id}/image")
 def get_result_image(job_id: str, db: Session = Depends(get_db), username: str = Depends(basic_auth)):
     job = db.query(Job).filter(Job.id == job_id).first()
     if not job:
@@ -108,7 +113,7 @@ def get_result_image(job_id: str, db: Session = Depends(get_db), username: str =
     if not job.result_annotated_uri:
         raise HTTPException(status_code=404, detail="Image not ready or not available")
 
-    local_path = resolve_storage_uri(job.result_annotated_uri)
+    local_path = storage.resolve_uri(job.result_annotated_uri)
     if not Path(local_path).exists():
         raise HTTPException(status_code=404, detail="File missing on disk")
 
@@ -117,7 +122,7 @@ def get_result_image(job_id: str, db: Session = Depends(get_db), username: str =
 from sqlalchemy import desc
 from app.db.models import Model, TrainingRun, Job
 
-@app.get("/api/dashboard/stats")
+@api_router.get("/dashboard/stats")
 def get_dashboard_stats(db: Session = Depends(get_db), username: str = Depends(basic_auth)):
     active_model = None
     if settings.ACTIVE_MODEL_ID:
@@ -168,3 +173,5 @@ def get_dashboard_stats(db: Session = Depends(get_db), username: str = Depends(b
         "recent_jobs": recent_jobs,
         "recent_training_runs": recent_runs
     }
+
+app.include_router(api_router)

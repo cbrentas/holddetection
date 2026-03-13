@@ -336,7 +336,7 @@
             formData.append('file', currentFile);
 
             try {
-                const response = await fetch('/uploads', {
+                const response = await fetch('/bbro/api/uploads', {
                     method: 'POST',
                     headers: getAuthHeaders(),
                     body: formData
@@ -365,7 +365,7 @@
 
             pollInterval = setInterval(async () => {
                 try {
-                    const response = await fetch(`/jobs/${jobId}`, {
+                    const response = await fetch(`/bbro/api/jobs/${jobId}`, {
                         headers: getAuthHeaders()
                     });
                     
@@ -395,7 +395,7 @@
         const fetchResults = async (jobId) => {
             try {
                 // Fetch predictions JSON for counts
-                const predResponse = await fetch(`/jobs/${jobId}/predictions`, {
+                const predResponse = await fetch(`/bbro/api/jobs/${jobId}/predictions`, {
                     headers: getAuthHeaders()
                 });
                 
@@ -405,7 +405,7 @@
                 }
 
                 // Show the image by fetching as blob so we can attach auth headers
-                const imgResponse = await fetch(`/jobs/${jobId}/image`, {
+                const imgResponse = await fetch(`/bbro/api/jobs/${jobId}/image`, {
                     headers: getAuthHeaders()
                 });
 
@@ -420,7 +420,7 @@
                 
                 // Attempt to calc approximate time if available via a second fetch
                 // the /jobs endpoint returns started_at and finished_at
-                const jobInfo = await fetch(`/jobs/${jobId}`, { headers: getAuthHeaders() });
+                const jobInfo = await fetch(`/bbro/api/jobs/${jobId}`, { headers: getAuthHeaders() });
                 if (jobInfo.ok) {
                     const infoData = await jobInfo.json();
                     if(infoData.started_at && infoData.finished_at) {

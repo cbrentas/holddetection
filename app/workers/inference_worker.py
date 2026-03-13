@@ -5,7 +5,7 @@ from app.db.session import SessionLocal
 from app.db.models import Job, JobStatus, Prediction
 from app.services.inference import run_inference
 from app.core.settings import settings
-from app.core.storage import make_local_uri, resolve_storage_uri
+from app.core.storage.service import storage
 from pathlib import Path
 import cv2
 
@@ -19,8 +19,8 @@ def process_job(db: Session, job: Job):
         job.attempts += 1
         db.commit()
 
-        image_path = resolve_storage_uri(job.upload.original_uri)
-        model_path = resolve_storage_uri(job.model.weights_uri)
+        image_path = storage.resolve_uri(job.upload.original_uri)
+        model_path = storage.resolve_uri(job.model.weights_uri)
 
         # ---- Run inference ----
         boxes, confs, annotated_image, elapsed = run_inference(
@@ -42,14 +42,9 @@ def process_job(db: Session, job: Job):
             db.add(pred)
 
         # ---- Save annotated image ----
-        Path(settings.STORAGE_RESULT_DIR).mkdir(parents=True, exist_ok=True)
-        result_path = Path(settings.STORAGE_RESULT_DIR) / f"{job.id}.jpg"
-
-        success = cv2.imwrite(str(result_path), annotated_image)
-        if not success:
-            raise RuntimeError(f"Failed to write annotated image to {result_path}")
-
-        job.result_annotated_uri = make_local_uri(str(result_path))
+        _, img_encoded = cv2.imencode('.jpg', annotated_image)
+        image_bytes = img_encoded.tobytes()
+        job.result_annotated_uri = storage.save_inference_result(str(job.id), image_bytes)
         
         height, width = 0, 0
         if annotated_image is not None:
