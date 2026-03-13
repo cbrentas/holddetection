@@ -12,9 +12,8 @@ venv/
 .env
 
 # Storage
-storage/uploads/
-storage/results/
-storage/models/
+storage/*
+!storage/.gitkeep
 
 # Alembic cache
 alembic/versions/*.pyc
@@ -24,3 +23,4 @@ alembic/versions/*.pyc
 
 # OS
 .DS_Store
+
