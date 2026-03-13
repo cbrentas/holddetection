@@ -5,6 +5,7 @@ from app.db.session import SessionLocal
 from app.db.models import Job, JobStatus, Prediction
 from app.services.inference import run_inference
 from app.core.settings import settings
+from app.core.storage import make_local_uri, resolve_storage_uri
 from pathlib import Path
 import cv2
 
@@ -18,8 +19,8 @@ def process_job(db: Session, job: Job):
         job.attempts += 1
         db.commit()
 
-        image_path = job.upload.original_uri
-        model_path = job.model.weights_uri
+        image_path = resolve_storage_uri(job.upload.original_uri)
+        model_path = resolve_storage_uri(job.model.weights_uri)
 
         # ---- Run inference ----
         boxes, confs, annotated_image, elapsed = run_inference(
@@ -44,14 +45,22 @@ def process_job(db: Session, job: Job):
         Path(settings.STORAGE_RESULT_DIR).mkdir(parents=True, exist_ok=True)
         result_path = Path(settings.STORAGE_RESULT_DIR) / f"{job.id}.jpg"
 
-        cv2.imwrite(str(result_path), annotated_image)
+        success = cv2.imwrite(str(result_path), annotated_image)
+        if not success:
+            raise RuntimeError(f"Failed to write annotated image to {result_path}")
 
-        job.result_annotated_uri = str(result_path)
+        job.result_annotated_uri = make_local_uri(str(result_path))
+        
+        height, width = 0, 0
+        if annotated_image is not None:
+            height, width = annotated_image.shape[:2]
 
         job.inference_meta = {
             "num_predictions": len(boxes),
             "runtime_seconds": elapsed,
-            "model_id": str(job.model.id)
+            "model_id": str(job.model.id),
+            "image_width": width,
+            "image_height": height
         }
 
         job.status = JobStatus.succeeded
