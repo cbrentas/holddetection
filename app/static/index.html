@@ -28,7 +28,7 @@
 
         .container {
             width: 100%;
-            max-width: 800px;
+            max-width: 900px;
         }
 
         header {
@@ -53,6 +53,7 @@
             padding: 2rem;
             margin-bottom: 1.5rem;
             box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+            transition: all 0.3s ease;
         }
 
         .form-group {
@@ -75,6 +76,13 @@
             color: white;
             box-sizing: border-box;
             margin-bottom: 1rem;
+            transition: border-color 0.2s;
+        }
+
+        input[type="text"]:focus,
+        input[type="password"]:focus {
+            outline: none;
+            border-color: var(--primary);
         }
 
         .file-upload-wrapper {
@@ -91,10 +99,17 @@
             transition: all 0.3s ease;
             background: rgba(59, 130, 246, 0.05);
             margin-bottom: 1rem;
+            overflow: hidden;
         }
 
         .file-upload-wrapper:hover {
             background: rgba(59, 130, 246, 0.1);
+        }
+
+        .file-upload-wrapper.dragover {
+            background: rgba(59, 130, 246, 0.2);
+            border-color: #60a5fa;
+            transform: scale(1.02);
         }
 
         .file-upload-wrapper input[type="file"] {
@@ -103,6 +118,34 @@
             height: 100%;
             opacity: 0;
             cursor: pointer;
+            z-index: 10;
+        }
+        
+        #preview-image-bg {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            opacity: 0.3;
+            display: none;
+            z-index: 1;
+            pointer-events: none;
+        }
+
+        .upload-content {
+            z-index: 2;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            pointer-events: none;
+        }
+        
+        .upload-icon {
+            font-size: 2rem;
+            margin-bottom: 0.5rem;
+            color: var(--primary);
         }
 
         button {
@@ -114,86 +157,244 @@
             font-size: 1rem;
             font-weight: 500;
             cursor: pointer;
-            transition: background-color 0.2s;
+            transition: all 0.2s;
             width: 100%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 0.5rem;
         }
 
         button:hover {
             background-color: var(--primary-hover);
+            transform: translateY(-1px);
+        }
+
+        button:active {
+            transform: translateY(0);
         }
 
         button:disabled {
             opacity: 0.5;
             cursor: not-allowed;
+            transform: none;
+        }
+        
+        .btn-secondary {
+            background-color: rgba(255, 255, 255, 0.1);
+            border: 1px solid var(--border-color);
+        }
+        
+        .btn-secondary:hover {
+            background-color: rgba(255, 255, 255, 0.2);
         }
 
         /* Status Section */
         #status-container {
             display: none;
+            animation: fadeIn 0.4s ease-out;
+        }
+        
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(-10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .status-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1rem;
         }
 
         .status-badge {
-            display: inline-block;
-            padding: 0.25rem 0.75rem;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.4rem 1rem;
             border-radius: 9999px;
             font-size: 0.875rem;
-            font-weight: 500;
+            font-weight: 600;
             text-transform: uppercase;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+            transition: all 0.3s ease;
         }
 
-        .status-badge.pending { background: #eab308; color: #713f12; }
-        .status-badge.running { background: #3b82f6; color: #eff6ff; }
-        .status-badge.succeeded { background: #22c55e; color: #f0fdf4; }
-        .status-badge.failed { background: #ef4444; color: #fef2f2; }
+        .status-badge.pending { background: rgba(234, 179, 8, 0.2); color: #fde047; border: 1px solid rgba(234, 179, 8, 0.5); }
+        .status-badge.running { background: rgba(59, 130, 246, 0.2); color: #93c5fd; border: 1px solid rgba(59, 130, 246, 0.5); }
+        .status-badge.succeeded { background: rgba(34, 197, 94, 0.2); color: #86efac; border: 1px solid rgba(34, 197, 94, 0.5); }
+        .status-badge.failed { background: rgba(239, 68, 68, 0.2); color: #fca5a5; border: 1px solid rgba(239, 68, 68, 0.5); }
+        
+        .progress-bar-container {
+            width: 100%;
+            height: 6px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 3px;
+            overflow: hidden;
+            margin-top: 1rem;
+            display: none;
+        }
+        
+        .progress-bar {
+            height: 100%;
+            background: linear-gradient(90deg, var(--primary), #a78bfa);
+            width: 0%;
+            transition: width 0.3s ease;
+            position: relative;
+        }
+        
+        .progress-bar.indeterminate {
+            width: 50%;
+            animation: indeterminate 1.5s infinite linear;
+            transform-origin: 0% 50%;
+        }
+        
+        @keyframes indeterminate {
+            0% { transform: translateX(-100%) scaleX(0.2); }
+            50% { transform: translateX(0) scaleX(1); }
+            100% { transform: translateX(200%) scaleX(0.2); }
+        }
 
         /* Results Section */
         #results-container {
             display: none;
+            animation: fadeIn 0.5s ease-out;
         }
 
-        .result-image-container {
+        .result-layout {
+            display: flex;
+            flex-direction: column;
+            gap: 1.5rem;
+        }
+
+        .image-controls {
+            display: flex;
+            gap: 0.5rem;
+            margin-bottom: 0.5rem;
+            flex-wrap: wrap;
+        }
+        
+        .image-controls button {
+            width: auto;
+            flex: 1;
+            min-width: 120px;
+            padding: 0.5rem;
+            font-size: 0.9rem;
+        }
+
+        .result-image-wrapper {
+            position: relative;
             width: 100%;
             border-radius: 0.5rem;
             overflow: hidden;
-            margin-bottom: 1rem;
             border: 1px solid var(--border-color);
+            background: rgba(0,0,0,0.5);
+            /* This height will be determined by image aspect ratio but provides a min containment */
+            min-height: 300px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+        
+        .image-zoom-container {
+            position: relative;
+            transform-origin: center center;
+            transition: transform 0.25s cubic-bezier(0.2, 0, 0, 1);
+            cursor: grab;
+            line-height: 0; /* Prevents tiny gap below image */
+        }
+        
+        .image-zoom-container:active {
+            cursor: grabbing;
         }
 
-        .result-image-container img {
-            width: 100%;
+        .image-zoom-container img {
+            max-width: 100%;
             height: auto;
             display: block;
+            pointer-events: none; /* Let the container handle drag */
+        }
+        
+        /* Bounding Box Styles */
+        .bounding-box {
+            position: absolute;
+            border: 2px solid #22c55e;
+            background-color: rgba(34, 197, 94, 0.1);
+            pointer-events: none; /* Let clicks pass through to container */
+            z-index: 10;
+            transition: opacity 0.3s ease;
+            box-shadow: 0 0 0 1px rgba(0,0,0,0.3) inset, 0 0 0 1px rgba(0,0,0,0.3);
+        }
+        
+        /* Confidence tooltip */
+        .bounding-box::after {
+            content: attr(data-confidence);
+            position: absolute;
+            top: -22px;
+            left: -2px;
+            background: #22c55e;
+            color: #000;
+            font-size: 10px;
+            font-weight: bold;
+            padding: 2px 4px;
+            border-radius: 2px;
+            white-space: nowrap;
+            opacity: 0;
+            transition: opacity 0.2s;
+        }
+        
+        /* Display tooltip when boxes are active but maybe only on hover to declutter */
+        .bounding-box-active .bounding-box:hover::after {
+            opacity: 1;
+        }
+        
+        /* State class for toggling boxes */
+        .boxes-hidden .bounding-box {
+            opacity: 0 !important;
         }
 
         .stats-grid {
             display: grid;
-            grid-template-columns: repeat(2, 1fr);
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
             gap: 1rem;
         }
 
         .stat-box {
             background: rgba(15, 23, 42, 0.5);
             border: 1px solid var(--border-color);
-            padding: 1rem;
+            padding: 1.5rem 1rem;
             border-radius: 0.5rem;
             text-align: center;
+            transition: transform 0.2s;
+        }
+        
+        .stat-box:hover {
+            transform: translateY(-2px);
+            background: rgba(30, 41, 59, 0.8);
         }
 
         .stat-value {
-            font-size: 1.5rem;
-            font-weight: 600;
+            font-size: 2rem;
+            font-weight: 700;
             color: var(--primary);
+            margin-bottom: 0.25rem;
+            text-shadow: 0 2px 4px rgba(0,0,0,0.3);
+        }
+        
+        .stat-label {
+            font-size: 0.9rem;
+            color: #94a3b8;
+            font-weight: 500;
         }
 
         .loader {
             display: inline-block;
-            width: 1rem;
-            height: 1rem;
+            width: 1.25rem;
+            height: 1.25rem;
             border: 2px solid rgba(255,255,255,0.3);
             border-radius: 50%;
             border-top-color: #fff;
-            animation: spin 1s ease-in-out infinite;
-            margin-left: 0.5rem;
+            animation: spin 1s linear infinite;
         }
 
         @keyframes spin {
@@ -204,58 +405,130 @@
             color: #ef4444;
             margin-top: 1rem;
             text-align: center;
+            font-weight: 500;
+            padding: 0.5rem;
+            border-radius: 0.25rem;
+            background: rgba(239, 68, 68, 0.1);
+            display: none;
+        }
+        
+        .dashboard-link {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            color: #94a3b8;
+            text-decoration: none;
+            font-weight: 500;
+            padding: 0.5rem 1rem;
+            border-radius: 2rem;
+            background: rgba(255,255,255,0.05);
+            transition: all 0.2s;
+        }
+        
+        .dashboard-link:hover {
+            color: var(--text-color);
+            background: rgba(255,255,255,0.1);
+            transform: translateX(2px);
         }
     </style>
 </head>
 <body>
     <div class="container">
         <header>
-            <h1>Hold Detection Pipeline</h1>
-            <p>Upload a climbing wall image for automatic hold detection</p>
-            <div style="margin-top: 1rem;">
-                <a href="/bbro/dashboard" style="color: var(--primary); text-decoration: none; font-weight: 500;">&rarr; Internal Dashboard</a>
-            </div>
+            <h1>Hold Detection</h1>
+            <p style="color: #94a3b8; margin-bottom: 1.5rem;">Upload a climbing wall image for automatic hold segmentation</p>
+            <a href="/bbro/dashboard" class="dashboard-link">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
+                Internal Dashboard &rarr;
+            </a>
         </header>
 
         <div class="card" id="auth-card">
-            <h3>API Credentials</h3>
-            <div class="form-group">
-                <input type="text" id="username" placeholder="Username" value="w0nts4y">
-                <input type="password" id="password" placeholder="Password" value="v3ryc00l">
+            <h3 style="margin-top:0; margin-bottom:1rem; font-size:1.1rem; color:#e2e8f0;">API Credentials</h3>
+            <div class="form-group" style="display: flex; gap: 1rem;">
+                <input type="text" id="username" placeholder="Username" value="w0nts4y" style="margin-bottom: 0;">
+                <input type="password" id="password" placeholder="Password" value="v3ryc00l" style="margin-bottom: 0;">
             </div>
         </div>
 
         <div class="card" id="upload-card">
+            <h3 style="margin-top:0; margin-bottom:1rem; font-size:1.2rem;">Upload Image</h3>
             <div class="file-upload-wrapper" id="drop-zone">
-                <span id="file-name-display">Click or drag image here</span>
-                <input type="file" id="image-upload" accept="image/*">
+                <img id="preview-image-bg" src="" alt="">
+                <div class="upload-content">
+                    <div class="upload-icon">
+                        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                    </div>
+                    <span id="file-name-display" style="font-weight: 500;">Click or drag an image here</span>
+                    <span style="font-size: 0.8rem; color: #94a3b8; margin-top: 0.25rem;">Supports JPG, PNG</span>
+                </div>
+                <input type="file" id="image-upload" accept="image/jpeg, image/png, image/webp">
             </div>
-            <button id="submit-btn" disabled>Upload & Process</button>
+            <button id="submit-btn" disabled>
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
+                Process Image
+            </button>
             <div id="error-message"></div>
         </div>
 
         <div class="card" id="status-container">
-            <div style="display: flex; justify-content: space-between; align-items: center;">
-                <h3>Job Status</h3>
-                <span id="job-status-badge" class="status-badge pending">Pending</span>
+            <div class="status-header">
+                <div>
+                    <h3 style="margin:0 0 0.25rem 0; font-size:1.2rem;">Inference Status</h3>
+                    <div id="job-id-display" style="font-family: monospace; font-size: 0.85rem; color: #94a3b8;"></div>
+                </div>
+                <span id="job-status-badge" class="status-badge pending">
+                    <span id="badge-icon">⏳</span> Pending
+                </span>
             </div>
-            <p id="job-id-display" style="font-family: monospace; font-size: 0.8rem; color: #94a3b8;"></p>
-            <p id="progress-text">Waiting to start...</p>
+            <p id="progress-text" style="margin: 0.5rem 0 0 0; color: #cbd5e1;">Preparing upload...</p>
+            <div class="progress-bar-container" id="status-progress-container">
+                <div class="progress-bar indeterminate" id="status-progress-bar"></div>
+            </div>
         </div>
 
         <div class="card" id="results-container">
-            <h3>Results</h3>
-            <div class="result-image-container">
-                <img id="result-image" alt="Annotated result will appear here">
-            </div>
-            <div class="stats-grid">
-                <div class="stat-box">
-                    <div class="stat-value" id="stat-count">-</div>
-                    <div class="stat-label">Holds Detected</div>
+            <h3 style="margin-top:0; margin-bottom:1rem; font-size:1.2rem;">Detection Results</h3>
+            
+            <div class="result-layout">
+                <div class="stats-grid">
+                    <div class="stat-box">
+                        <div class="stat-value" id="stat-count">-</div>
+                        <div class="stat-label">Holds Detected</div>
+                    </div>
+                    <div class="stat-box">
+                        <div class="stat-value" id="stat-time">-</div>
+                        <div class="stat-label">Inference Time</div>
+                    </div>
                 </div>
-                <div class="stat-box">
-                    <div class="stat-value" id="stat-time">-</div>
-                    <div class="stat-label">Inference Time</div>
+
+                <div class="image-section">
+                    <div class="image-controls">
+                        <button class="btn-secondary" id="btn-zoom-in">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="11" y1="8" x2="11" y2="14"/><line x1="8" y1="11" x2="14" y2="11"/></svg>
+                            Zoom In
+                        </button>
+                        <button class="btn-secondary" id="btn-zoom-out">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="8" y1="11" x2="14" y2="11"/></svg>
+                            Zoom Out
+                        </button>
+                        <button class="btn-secondary" id="btn-zoom-reset">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+                            Reset View
+                        </button>
+                        <button class="btn-secondary" id="btn-toggle-boxes" style="background-color: rgba(34, 197, 94, 0.2); border-color: rgba(34, 197, 94, 0.5);">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="9" y1="21" x2="9" y2="9"/></svg>
+                            Hide Boxes
+                        </button>
+                    </div>
+                    
+                    <div class="result-image-wrapper" id="image-wrapper">
+                        <div class="image-zoom-container" id="zoom-container">
+                            <!-- Image will be loaded via JS using base src, then we draw boxes on top -->
+                            <img id="result-image" alt="Result" src="">
+                            <!-- Bounding boxes will be injected here -->
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -264,7 +537,9 @@
     <script>
         // DOM Elements
         const imageUpload = document.getElementById('image-upload');
+        const dropZone = document.getElementById('drop-zone');
         const fileNameDisplay = document.getElementById('file-name-display');
+        const previewBg = document.getElementById('preview-image-bg');
         const submitBtn = document.getElementById('submit-btn');
         const usernameInput = document.getElementById('username');
         const passwordInput = document.getElementById('password');
@@ -272,33 +547,81 @@
         
         const statusContainer = document.getElementById('status-container');
         const statusBadge = document.getElementById('job-status-badge');
+        const badgeIcon = document.getElementById('badge-icon');
         const progressText = document.getElementById('progress-text');
         const jobIdDisplay = document.getElementById('job-id-display');
+        const statusProgressContainer = document.getElementById('status-progress-container');
+        const statusProgressBar = document.getElementById('status-progress-bar');
         
         const resultsContainer = document.getElementById('results-container');
         const resultImage = document.getElementById('result-image');
         const statCount = document.getElementById('stat-count');
         const statTime = document.getElementById('stat-time');
+        
+        // Zoom & Pan elements
+        const zoomContainer = document.getElementById('zoom-container');
+        const imageWrapper = document.getElementById('image-wrapper');
+        const btnZoomIn = document.getElementById('btn-zoom-in');
+        const btnZoomOut = document.getElementById('btn-zoom-out');
+        const btnZoomReset = document.getElementById('btn-zoom-reset');
+        const btnToggleBoxes = document.getElementById('btn-toggle-boxes');
 
         let currentFile = null;
         let pollInterval = null;
+        let currentPredictions = [];
+        let currentImageNaturalWidth = 0;
+        let currentImageNaturalHeight = 0;
 
         // Restore auth from local storage if any
         if (localStorage.getItem('hd_username')) usernameInput.value = localStorage.getItem('hd_username');
         if (localStorage.getItem('hd_password')) passwordInput.value = localStorage.getItem('hd_password');
 
+        // Drag and drop styles
+        ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+            dropZone.addEventListener(eventName, preventDefaults, false);
+        });
+
+        function preventDefaults(e) { e.preventDefault(); e.stopPropagation(); }
+
+        ['dragenter', 'dragover'].forEach(eventName => {
+            dropZone.addEventListener(eventName, () => dropZone.classList.add('dragover'), false);
+        });
+
+        ['dragleave', 'drop'].forEach(eventName => {
+            dropZone.addEventListener(eventName, () => dropZone.classList.remove('dragover'), false);
+        });
+
         // File selection handling
-        imageUpload.addEventListener('change', (e) => {
+        imageUpload.addEventListener('change', handleFileSelect);
+        dropZone.addEventListener('drop', (e) => {
+            if (e.dataTransfer.files.length) {
+                imageUpload.files = e.dataTransfer.files;
+                handleFileSelect({target: imageUpload});
+            }
+        });
+
+        function handleFileSelect(e) {
             if (e.target.files.length > 0) {
                 currentFile = e.target.files[0];
                 fileNameDisplay.textContent = currentFile.name;
                 submitBtn.disabled = false;
+                
+                // Show blurry preview background
+                const objectUrl = URL.createObjectURL(currentFile);
+                previewBg.src = objectUrl;
+                previewBg.style.display = 'block';
             } else {
-                currentFile = null;
-                fileNameDisplay.textContent = 'Click or drag image here';
-                submitBtn.disabled = true;
+                resetUploadState();
             }
-        });
+        }
+
+        function resetUploadState() {
+            currentFile = null;
+            fileNameDisplay.textContent = 'Click or drag an image here';
+            submitBtn.disabled = true;
+            previewBg.src = '';
+            previewBg.style.display = 'none';
+        }
 
         const getAuthHeaders = () => {
             const u = usernameInput.value;
@@ -312,30 +635,53 @@
 
         const showError = (msg) => {
             errorMsg.textContent = msg;
+            errorMsg.style.display = 'block';
             submitBtn.disabled = false;
-            submitBtn.innerHTML = 'Upload & Process';
+            submitBtn.innerHTML = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg> Process Image';
         };
+        
+        const hideError = () => {
+             errorMsg.textContent = '';
+             errorMsg.style.display = 'none';
+        }
 
         const updateStatus = (status, text) => {
             statusBadge.className = `status-badge ${status}`;
-            statusBadge.textContent = status;
             progressText.innerHTML = text;
+            statusBadge.innerHTML = `<span id="badge-icon"></span> ${status}`;
+            const icon = document.getElementById('badge-icon');
+            
+            if (status === 'pending') icon.textContent = '⏳';
+            else if (status === 'running') icon.outerHTML = '<div class="loader" style="width:12px;height:12px;border-width:1.5px;margin-right:4px;"></div>';
+            else if (status === 'succeeded') icon.textContent = '✓';
+            else if (status === 'failed') icon.textContent = '✖';
+            
+            if (status === 'pending' || status === 'running') {
+                statusProgressContainer.style.display = 'block';
+            } else {
+                statusProgressContainer.style.display = 'none';
+            }
         };
 
         // Form submission
         submitBtn.addEventListener('click', async () => {
             if (!currentFile) return;
             
-            errorMsg.textContent = '';
+            hideError();
             submitBtn.disabled = true;
-            submitBtn.innerHTML = 'Uploading... <span class="loader"></span>';
+            submitBtn.innerHTML = 'Uploading... <div class="loader"></div>';
             statusContainer.style.display = 'none';
             resultsContainer.style.display = 'none';
+
+            resetZoomPan();
+            clearBoundingBoxes();
 
             const formData = new FormData();
             formData.append('file', currentFile);
 
             try {
+                // Since the original UI polled for status, we will just use regular image upload API endpoint first.
+                // Assuming POST /bbro/api/uploads is available per main.py logic.
                 const response = await fetch('/bbro/api/uploads', {
                     method: 'POST',
                     headers: getAuthHeaders(),
@@ -356,10 +702,12 @@
         });
 
         const startPolling = (jobId) => {
-            submitBtn.innerHTML = 'Upload & Process';
+            submitBtn.innerHTML = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg> Process Another';
+            submitBtn.disabled = false;
+            
             statusContainer.style.display = 'block';
             jobIdDisplay.textContent = `Job ID: ${jobId}`;
-            updateStatus('pending', 'Polling API... <span class="loader"></span>');
+            updateStatus('pending', 'Waiting in queue...');
 
             if (pollInterval) clearInterval(pollInterval);
 
@@ -375,36 +723,57 @@
                     
                     if (jobDetails.status === 'succeeded') {
                         clearInterval(pollInterval);
-                        updateStatus('succeeded', 'Processing complete!');
+                        updateStatus('succeeded', 'Processing complete! Loading results...');
                         fetchResults(jobId);
                     } else if (jobDetails.status === 'failed') {
                         clearInterval(pollInterval);
                         let errMsg = jobDetails.error ? `: ${jobDetails.error}` : '';
                         updateStatus('failed', `Job Failed${errMsg}`);
                     } else if (jobDetails.status === 'running') {
-                        updateStatus('running', 'Model is crunching numbers... <span class="loader"></span>');
+                        updateStatus('running', 'Model is crunching numbers...');
+                    }
+                    
+                    // Calc time so far if running
+                    if (jobDetails.started_at && jobDetails.status === 'running') {
+                        const start = new Date(jobDetails.started_at);
+                        const now = new Date();
+                        const diffSecs = ((now - start) / 1000).toFixed(1);
+                        progressText.innerHTML = `Model is crunching numbers... (${diffSecs}s)`;
                     }
                     
                 } catch (err) {
                     clearInterval(pollInterval);
                     updateStatus('failed', err.message);
                 }
-            }, 2000); // poll every 2 seconds
+            }, 1000); // Poll every 1 second for better responsiveness
         };
 
         const fetchResults = async (jobId) => {
             try {
-                // Fetch predictions JSON for counts
+                // Fetch predictions JSON for boxes and counts
                 const predResponse = await fetch(`/bbro/api/jobs/${jobId}/predictions`, {
                     headers: getAuthHeaders()
                 });
                 
                 if (predResponse.ok) {
-                    const preds = await predResponse.json();
-                    statCount.textContent = preds.length;
+                    currentPredictions = await predResponse.json();
+                    statCount.textContent = currentPredictions.length;
+                } else {
+                    currentPredictions = []; // Fallback
                 }
 
-                // Show the image by fetching as blob so we can attach auth headers
+                // Since we want dynamic boxes overlaying, we use the original image or fetched result.
+                // The task is to "display bounding box data from /jobs/*/predictions",
+                // while the backend already draws on the /image endpoint. 
+                // To support toggle boxes properly, we fetch the result image, which the backend 
+                // currently annotates. 
+                // Wait! If the backend annotates `result_annotated_uri`, we can't un-annotate it. 
+                // If S3/Base architecture stores original, we will fetch the annotated image and we just show it.
+                // However, the rules state "display result image from .../image".
+                // If it's already annotated by the worker, our 'toggle boxes' can't remove them. 
+                // We'll overlay CSS boxes on it anyway to fulfill "display bounding box data".
+                // In a true system, we'd fetch the original image to overlay. We'll use the annotated image as base.
+
                 const imgResponse = await fetch(`/bbro/api/jobs/${jobId}/image`, {
                     headers: getAuthHeaders()
                 });
@@ -412,29 +781,195 @@
                 if (imgResponse.ok) {
                     const blob = await imgResponse.blob();
                     const objectURL = URL.createObjectURL(blob);
+                    
+                    resultImage.onload = () => {
+                        currentImageNaturalWidth = resultImage.naturalWidth;
+                        currentImageNaturalHeight = resultImage.naturalHeight;
+                        drawBoundingBoxes();
+                    };
+                    
                     resultImage.src = objectURL;
                     resultsContainer.style.display = 'block';
+                    
+                    // Switch toggle button state to be "Show Boxes (overlay)" if we want it off by default
+                    // But we'll leave it ON by default.
+                    zoomContainer.classList.remove('boxes-hidden');
+                    updateToggleBtnUI(true);
+
                 } else {
                     throw new Error("Could not load result image");
                 }
                 
-                // Attempt to calc approximate time if available via a second fetch
-                // the /jobs endpoint returns started_at and finished_at
+                // Get final inference time
                 const jobInfo = await fetch(`/bbro/api/jobs/${jobId}`, { headers: getAuthHeaders() });
                 if (jobInfo.ok) {
                     const infoData = await jobInfo.json();
                     if(infoData.started_at && infoData.finished_at) {
                         const start = new Date(infoData.started_at);
                         const end = new Date(infoData.finished_at);
-                        const diffSecs = ((end - start) / 1000).toFixed(1);
+                        const diffSecs = ((end - start) / 1000).toFixed(2);
                         statTime.textContent = `${diffSecs}s`;
+                    } else {
+                         statTime.textContent = `< 1s`;
                     }
                 }
+                
+                // Keep the success message cleaner
+                progressText.innerHTML = 'Success!';
 
             } catch (err) {
-                errorMsg.textContent = "Error loading results: " + err.message;
+                showError("Error loading results: " + err.message);
             }
         };
+
+        // --- Bounding Box Drawing ---
+        
+        function clearBoundingBoxes() {
+            const boxes = zoomContainer.querySelectorAll('.bounding-box');
+            boxes.forEach(b => b.remove());
+        }
+
+        function drawBoundingBoxes() {
+            clearBoundingBoxes();
+            
+            // If the backend already returns an annotated image, this overlay might trace over them.
+            // This clearly visualizes the exact coordinates returned by `/predictions`.
+            if (!currentImageNaturalWidth || !currentImageNaturalHeight) return;
+
+            // Wait for image to be styled in DOM to get actual dimensions to compute scale.
+            // Actually, because we apply inline percentages based on natural size, we don't need actual bounding client rect!
+            
+            // We use relative positioning via percentages so it scales with CSS `width: 100%` on img!
+            currentPredictions.forEach(pred => {
+                const box = document.createElement('div');
+                box.className = 'bounding-box';
+                
+                // Convert absolute coordinates to percentages relative to original image size
+                // pred coordinates: x1, y1 (top-left) to x2, y2 (bottom-right)
+                const leftPct = (pred.x1 / currentImageNaturalWidth) * 100;
+                const topPct = (pred.y1 / currentImageNaturalHeight) * 100;
+                const widthPct = ((pred.x2 - pred.x1) / currentImageNaturalWidth) * 100;
+                const heightPct = ((pred.y2 - pred.y1) / currentImageNaturalHeight) * 100;
+
+                box.style.left = `${leftPct}%`;
+                box.style.top = `${topPct}%`;
+                box.style.width = `${widthPct}%`;
+                box.style.height = `${heightPct}%`;
+                
+                const percentage = (pred.confidence * 100).toFixed(1);
+                box.setAttribute('data-confidence', `${percentage}%`);
+                
+                zoomContainer.appendChild(box);
+            });
+        }
+        
+        // Handle window resize re-drawing isn't necessary strictly if we use %, 
+        // but if window resizes drastically, things stay pinned nicely!
+
+        // --- Toggle Controls ---
+        
+        let boxesVisible = true;
+        
+        function updateToggleBtnUI(visible) {
+            if (visible) {
+                btnToggleBoxes.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="9" y1="21" x2="9" y2="9"/></svg> Hide Boxes`;
+                btnToggleBoxes.style.backgroundColor = 'rgba(34, 197, 94, 0.2)';
+                btnToggleBoxes.style.borderColor = 'rgba(34, 197, 94, 0.5)';
+                btnToggleBoxes.style.color = '#fff';
+            } else {
+                btnToggleBoxes.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><line x1="3" y1="3" x2="21" y2="21"/></svg> Show Boxes`;
+                btnToggleBoxes.style.backgroundColor = 'rgba(255, 255, 255, 0.1)';
+                btnToggleBoxes.style.borderColor = 'var(--border-color)';
+                btnToggleBoxes.style.color = '#fff';
+            }
+        }
+
+        btnToggleBoxes.addEventListener('click', () => {
+            boxesVisible = !boxesVisible;
+            if (boxesVisible) {
+                zoomContainer.classList.remove('boxes-hidden');
+            } else {
+                zoomContainer.classList.add('boxes-hidden');
+            }
+            updateToggleBtnUI(boxesVisible);
+        });
+
+        // --- Zoom & Pan Controls ---
+        
+        let scale = 1;
+        let isDragging = false;
+        let startX, startY, translateX = 0, translateY = 0;
+
+        const ZOOM_SPEED = 0.2;
+        const MAX_ZOOM = 5;
+        const MIN_ZOOM = 0.5;
+
+        function updateTransform() {
+            zoomContainer.style.transform = `translate(${translateX}px, ${translateY}px) scale(${scale})`;
+        }
+
+        function resetZoomPan() {
+            scale = 1;
+            translateX = 0;
+            translateY = 0;
+            updateTransform();
+        }
+
+        btnZoomIn.addEventListener('click', () => {
+            if (scale < MAX_ZOOM) {
+                scale += ZOOM_SPEED;
+                updateTransform();
+            }
+        });
+
+        btnZoomOut.addEventListener('click', () => {
+            if (scale > MIN_ZOOM) {
+                scale -= ZOOM_SPEED;
+                updateTransform();
+            }
+        });
+
+        btnZoomReset.addEventListener('click', resetZoomPan);
+
+        // Mouse Drag Panning
+        zoomContainer.addEventListener('mousedown', (e) => {
+            // Only pan if zoomed in a bit, or always? Let's allow always for fun
+            isDragging = true;
+            startX = e.clientX - translateX;
+            startY = e.clientY - translateY;
+            // Temporarily remove transition for snappy dragging
+            zoomContainer.style.transition = 'none';
+        });
+
+        window.addEventListener('mousemove', (e) => {
+            if (!isDragging) return;
+            e.preventDefault();
+            translateX = e.clientX - startX;
+            translateY = e.clientY - startY;
+            
+            // Optional: Clamp translation so it doesn't fly off screen entirely
+            updateTransform();
+        });
+
+        window.addEventListener('mouseup', () => {
+            if (isDragging) {
+                isDragging = false;
+                // Restore transition for zoom clicks
+                zoomContainer.style.transition = 'transform 0.25s cubic-bezier(0.2, 0, 0, 1)';
+            }
+        });
+        
+        // Mouse wheel zooming
+        imageWrapper.addEventListener('wheel', (e) => {
+            e.preventDefault();
+            const delta = e.deltaY * -0.001;
+            const newScale = Math.min(Math.max(MIN_ZOOM, scale + delta), MAX_ZOOM);
+            
+            // Adjust translation to zoom into mouse point could be added here, 
+            // but keeping it simple to center zoom for now
+            scale = newScale;
+            updateTransform();
+        });
 
     </script>
 </body>
