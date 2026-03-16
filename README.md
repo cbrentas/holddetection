@@ -24,6 +24,8 @@ predictions stored
 annotated image generated
    ↓
 wall and holds projected
+   ↓
+persistent wall API exposed
 ```
 
 ## Components
@@ -115,7 +117,7 @@ In production, the system runs on a VPS behind an nginx reverse proxy and operat
 
 Planned additions include:
 
-- **Annotation editor**: Interface to adjust bounding boxes interactively.
+- **Annotation editor**: Interface to adjust bounding boxes interactively via the persistent `wall_holds` layer.
 - **Dataset generation**: Pipelines to build new datasets from edited annotations.
 - **Automated training pipeline**: Triggering finetuning directly from the backend.
 - **Route creation tools**: Group holds into documented climbing boulders.
