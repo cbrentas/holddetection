@@ -178,3 +178,52 @@ class Artifact(Base):
     __table_args__ = (
         Index("ix_artifacts_training_run_id", "training_run_id"),
     )
+
+class Wall(Base):
+    __tablename__ = "walls"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    title: Mapped[str] = mapped_column(String(255), nullable=False, default="Untitled Wall")
+    
+    original_upload_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("uploads.id"), nullable=True)
+    latest_job_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("jobs.id"), nullable=True)
+    
+    original_image_uri: Mapped[str] = mapped_column(Text, nullable=False)
+    preview_image_uri: Mapped[str | None] = mapped_column(Text, nullable=True)
+    
+    status: Mapped[str] = mapped_column(String(50), nullable=False, default="draft")
+    created_by: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    meta: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+class WallHold(Base):
+    __tablename__ = "wall_holds"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    wall_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("walls.id"), nullable=False)
+    prediction_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("predictions.id"), nullable=True)
+    
+    source_type: Mapped[str] = mapped_column(String(50), nullable=False, default="model")
+    class_name: Mapped[str] = mapped_column(String(80), nullable=False, default="hold")
+    confidence: Mapped[float | None] = mapped_column(Float, nullable=True)
+    
+    x1: Mapped[float] = mapped_column(Float, nullable=False)
+    y1: Mapped[float] = mapped_column(Float, nullable=False)
+    x2: Mapped[float] = mapped_column(Float, nullable=False)
+    y2: Mapped[float] = mapped_column(Float, nullable=False)
+    center_x: Mapped[float] = mapped_column(Float, nullable=False)
+    center_y: Mapped[float] = mapped_column(Float, nullable=False)
+    
+    geometry: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    
+    label_text: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    label_x: Mapped[float | None] = mapped_column(Float, nullable=True)
+    label_y: Mapped[float | None] = mapped_column(Float, nullable=True)
+    
+    is_hidden: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    is_user_adjusted: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
