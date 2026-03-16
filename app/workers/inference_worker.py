@@ -1,5 +1,6 @@
 import time
 from datetime import datetime
+import logging
 from sqlalchemy.orm import Session
 from app.db.session import SessionLocal
 from app.db.models import Job, JobStatus, Prediction
@@ -8,6 +9,9 @@ from app.core.settings import settings
 from app.core.storage.service import storage
 from pathlib import Path
 import cv2
+
+logger = logging.getLogger(__name__)
+
 
 POLL_INTERVAL = 2
 
@@ -62,6 +66,16 @@ def process_job(db: Session, job: Job):
         job.finished_at = datetime.utcnow()
 
         db.commit()
+
+        # ---- Create Wall from Job ----
+        try:
+            from app.services.wall import create_wall_from_job
+            create_wall_from_job(db, job)
+        except Exception:
+            db.rollback()
+            logger.exception("Error creating wall from job %s", job.id)
+
+
 
     except Exception as e:
         job.status = JobStatus.failed
