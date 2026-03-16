@@ -120,7 +120,7 @@ def get_result_image(job_id: str, db: Session = Depends(get_db), username: str =
     return FileResponse(local_path)
 
 from sqlalchemy import desc
-from app.db.models import Model, TrainingRun, Job
+from app.db.models import Model, TrainingRun, Job, Wall, WallHold
 
 @api_router.get("/dashboard/stats")
 def get_dashboard_stats(db: Session = Depends(get_db), username: str = Depends(basic_auth)):
@@ -172,6 +172,91 @@ def get_dashboard_stats(db: Session = Depends(get_db), username: str = Depends(b
         "active_model": active_model,
         "recent_jobs": recent_jobs,
         "recent_training_runs": recent_runs
+    }
+
+@api_router.get("/walls")
+def get_walls(db: Session = Depends(get_db), username: str = Depends(basic_auth)):
+    walls = db.query(Wall).order_by(desc(Wall.created_at)).limit(50).all()
+    return [
+        {
+            "id": str(w.id),
+            "title": w.title,
+            "status": w.status,
+            "original_image_uri": w.original_image_uri,
+            "preview_image_uri": w.preview_image_uri,
+            "created_at": w.created_at.isoformat() if w.created_at else None,
+            "updated_at": w.updated_at.isoformat() if w.updated_at else None,
+        }
+        for w in walls
+    ]
+
+@api_router.get("/walls/{wall_id}")
+def get_wall(wall_id: str, db: Session = Depends(get_db), username: str = Depends(basic_auth)):
+    wall = db.query(Wall).filter(Wall.id == wall_id).first()
+    if not wall:
+        raise HTTPException(status_code=404, detail="Wall not found")
+        
+    return {
+        "id": str(wall.id),
+        "title": wall.title,
+        "status": wall.status,
+        "original_upload_id": str(wall.original_upload_id) if wall.original_upload_id else None,
+        "latest_job_id": str(wall.latest_job_id) if wall.latest_job_id else None,
+        "original_image_uri": wall.original_image_uri,
+        "preview_image_uri": wall.preview_image_uri,
+        "created_by": wall.created_by,
+        "created_at": wall.created_at.isoformat() if wall.created_at else None,
+        "updated_at": wall.updated_at.isoformat() if wall.updated_at else None,
+        "meta": wall.meta
+    }
+
+@api_router.get("/walls/{wall_id}/holds")
+def get_wall_holds(wall_id: str, db: Session = Depends(get_db), username: str = Depends(basic_auth)):
+    wall = db.query(Wall).filter(Wall.id == wall_id).first()
+    if not wall:
+        raise HTTPException(status_code=404, detail="Wall not found")
+        
+    holds = db.query(WallHold).filter(WallHold.wall_id == wall_id).order_by(WallHold.id).all()
+    
+    return [
+        {
+            "id": str(h.id),
+            "source_type": h.source_type,
+            "class_name": h.class_name,
+            "confidence": h.confidence,
+            "x1": h.x1,
+            "y1": h.y1,
+            "x2": h.x2,
+            "y2": h.y2,
+            "center_x": h.center_x,
+            "center_y": h.center_y,
+            "geometry": h.geometry,
+            "label_text": h.label_text,
+            "label_x": h.label_x,
+            "label_y": h.label_y,
+            "is_hidden": h.is_hidden,
+            "is_user_adjusted": h.is_user_adjusted,
+            "created_at": h.created_at.isoformat() if h.created_at else None,
+        }
+        for h in holds
+    ]
+
+@api_router.get("/jobs/{job_id}/wall")
+def get_job_wall(job_id: str, db: Session = Depends(get_db), username: str = Depends(basic_auth)):
+    job = db.query(Job).filter(Job.id == job_id).first()
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+        
+    wall = db.query(Wall).filter(Wall.latest_job_id == job_id).first()
+    if not wall:
+        raise HTTPException(status_code=404, detail="Wall not found for this job")
+        
+    return {
+        "id": str(wall.id),
+        "title": wall.title,
+        "status": wall.status,
+        "preview_image_uri": wall.preview_image_uri,
+        "original_image_uri": wall.original_image_uri,
     }
 
 app.include_router(api_router)

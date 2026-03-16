@@ -22,6 +22,8 @@ YOLO inference
 predictions stored
    ↓
 annotated image generated
+   ↓
+wall and holds projected
 ```
 
 ## Components
@@ -29,8 +31,9 @@ annotated image generated
 The system is composed of several distinct and loosely coupled components:
 
 - **FastAPI backend**: API gateway serving routes and managing the UI.
+- **Wall API**: Read-only REST endpoints exposing generated walls and wall holds.
 - **Async inference worker**: Continuous background process running ML models.
-- **PostgreSQL database**: Stores metadata for models, datasets, jobs, and predictions.
+- **PostgreSQL database**: Stores metadata for models, datasets, jobs, walls, and predictions.
 - **Storage abstraction**: Encapsulates file operations to allow easy switching of backend storage layers.
 - **ML experiment tracking**: Script-based tooling to track training metadata and versions.
 - **Dashboard**: Minimal UI for viewing system health, jobs, and experiments.
