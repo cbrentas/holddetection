@@ -487,6 +487,34 @@
             </div>
         </div>
 
+        <div class="card" id="wall-container" style="display: none; animation: fadeIn 0.5s ease-out;">
+            <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 1rem;">
+                <div>
+                    <h3 style="margin: 0; font-size: 1.2rem; color: #a78bfa;">Saved Wall</h3>
+                    <div style="font-family: monospace; font-size: 0.85rem; color: #94a3b8; margin-top: 0.25rem;" id="wall-id-display"></div>
+                </div>
+                <span id="wall-status-display" class="status-badge" style="background: rgba(167, 139, 250, 0.2); color: #c4b5fd; border: 1px solid rgba(167, 139, 250, 0.5);">
+                    -
+                </span>
+            </div>
+            
+            <div class="stats-grid" style="margin-bottom: 1rem;">
+                <div class="stat-box" style="padding: 1rem;">
+                    <div class="stat-value" id="wall-title-display" style="font-size: 1.1rem; color: #e2e8f0;">-</div>
+                    <div class="stat-label">Title</div>
+                </div>
+                <div class="stat-box" style="padding: 1rem;">
+                    <div class="stat-value" id="wall-hold-count" style="font-size: 1.5rem;">-</div>
+                    <div class="stat-label">Projected Holds</div>
+                </div>
+            </div>
+
+            <a id="wall-holds-link" href="#" target="_blank" class="dashboard-link" style="justify-content: center; width: 100%; box-sizing: border-box; text-align: center;">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 0.5rem;"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+                Inspect Holds JSON
+            </a>
+        </div>
+
         <div class="card" id="results-container">
             <h3 style="margin-top:0; margin-bottom:1rem; font-size:1.2rem;">Detection Results</h3>
             
@@ -672,6 +700,8 @@
             submitBtn.innerHTML = 'Uploading... <div class="loader"></div>';
             statusContainer.style.display = 'none';
             resultsContainer.style.display = 'none';
+            const wallContainer = document.getElementById('wall-container');
+            if(wallContainer) wallContainer.style.display = 'none';
 
             resetZoomPan();
             clearBoundingBoxes();
@@ -791,6 +821,8 @@
                     resultImage.src = objectURL;
                     resultsContainer.style.display = 'block';
                     
+                    fetchWall(jobId);
+                    
                     // Switch toggle button state to be "Show Boxes (overlay)" if we want it off by default
                     // But we'll leave it ON by default.
                     zoomContainer.classList.remove('boxes-hidden');
@@ -819,6 +851,29 @@
 
             } catch (err) {
                 showError("Error loading results: " + err.message);
+            }
+        };
+
+        const fetchWall = async (jobId) => {
+            try {
+                const response = await fetch(`/bbro/api/jobs/${jobId}/wall`, {
+                    headers: getAuthHeaders()
+                });
+                
+                if (response.ok) {
+                    const wallData = await response.json();
+                    
+                    document.getElementById('wall-id-display').textContent = `Wall ID: ${wallData.id}`;
+                    document.getElementById('wall-title-display').textContent = wallData.title || 'Untitled Wall';
+                    document.getElementById('wall-status-display').textContent = wallData.status;
+                    
+                    document.getElementById('wall-hold-count').textContent = currentPredictions.length;
+                    document.getElementById('wall-holds-link').href = `/bbro/api/walls/${wallData.id}/holds`;
+                    
+                    document.getElementById('wall-container').style.display = 'block';
+                }
+            } catch (err) {
+                console.error("Could not load wall details:", err);
             }
         };
 
