@@ -11,18 +11,32 @@ venv/
 # Environment
 .env
 
-# Storage
+# Storage runtime data
 storage/*
 !storage/.gitkeep
+
+# keep structure
+!storage/models/
+!storage/uploads/
+!storage/results/
+
+# keep placeholder files
+!storage/models/.gitkeep
+!storage/uploads/.gitkeep
+!storage/results/.gitkeep
 
 # Alembic cache
 alembic/versions/*.pyc
 
 # Logs
 *.log
+*.pid
 
 # OS
 .DS_Store
+
+holddetection-api.service
+holddetection-worker.service
 
 
 tnega/*
