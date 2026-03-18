@@ -243,6 +243,10 @@ def get_wall_holds(wall_id: str, db: Session = Depends(get_db), username: str = 
         for h in holds
     ]
 
+@app.get("/bbro/walls/{wall_id}/edit", include_in_schema=False)
+def read_editor(wall_id: str):
+    return FileResponse("app/static/editor.html")
+
 @api_router.get("/jobs/{job_id}/wall")
 def get_job_wall(job_id: str, db: Session = Depends(get_db), username: str = Depends(basic_auth)):
     job = db.query(Job).filter(Job.id == job_id).first()
@@ -268,6 +272,9 @@ def get_wall_image(wall_id: str, db: Session = Depends(get_db), username: str = 
         raise HTTPException(status_code=404, detail="Wall not found")
         
     local_path = storage.resolve_uri(wall.original_image_uri)
+    print(f"DEBUG: resolve_uri('{wall.original_image_uri}') -> {local_path}")
+    print(f"DEBUG: Path exists? {Path(local_path).exists()}")
+    
     if not Path(local_path).exists():
         raise HTTPException(status_code=404, detail="Original image missing on disk")
 

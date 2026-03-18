@@ -1,0 +1,810 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Wall Editor - Hold Detection</title>
+    <style>
+        :root {
+            --bg-color: #0f172a;
+            --panel-bg: rgba(30, 41, 59, 0.95);
+            --text-color: #f8fafc;
+            --primary: #3b82f6;
+            --primary-hover: #2563eb;
+            --border-color: rgba(255, 255, 255, 0.1);
+            --selected-color: #fca5a5;
+            --box-color: #22c55e;
+            --overlay-opacity: 0.8;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            margin: 0;
+            padding: 0;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        /* --- Header --- */
+        header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 1rem 2rem;
+            background: var(--panel-bg);
+            border-bottom: 1px solid var(--border-color);
+            z-index: 100;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+        }
+
+        .header-left {
+            display: flex;
+            align-items: center;
+            gap: 1.5rem;
+        }
+
+        .back-link {
+            color: var(--primary);
+            text-decoration: none;
+            font-weight: 500;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .back-link:hover {
+            color: var(--primary-hover);
+        }
+
+        h1 {
+            font-size: 1.25rem;
+            margin: 0;
+            font-weight: 600;
+        }
+
+        .header-controls {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+        }
+
+        .header-controls label {
+            font-size: 0.9rem;
+            color: #94a3b8;
+        }
+
+        /* --- Main Layout --- */
+        .editor-layout {
+            display: flex;
+            flex: 1;
+            height: calc(100vh - 65px);
+            overflow: hidden;
+        }
+
+        /* --- Viewport (Left Pane) --- */
+        .main-viewport {
+            flex: 1;
+            position: relative;
+            background: #000;
+            overflow: hidden;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .canvas-container {
+            position: relative;
+            transform-origin: center center;
+            transition: transform 0.1s linear; /* Smooth but fast for zooming, disabled during pan */
+            will-change: transform;
+            /* width/height will be determined by image natural size fitting in viewport initially */
+        }
+
+        #wall-image {
+            display: block;
+            max-width: none; /* Let it dictate size based on zoom */
+            pointer-events: none; /* Let the container handle drag */
+            user-select: none;
+            -webkit-user-drag: none;
+        }
+
+        #holds-layer {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none; /* Let hitboxes capture clicks */
+        }
+
+        /* --- Density & Zoom Logic --- */
+        /* default styles (zoomed in) */
+        
+        .hold-group {
+            position: absolute;
+            pointer-events: none; /* Group itself doesn't catch clicks */
+        }
+
+        .hold-box {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            border: 2px solid var(--box-color);
+            background-color: rgba(34, 197, 94, 0.1);
+            opacity: var(--overlay-opacity);
+            box-sizing: border-box;
+            transition: border-color 0.2s, background-color 0.2s, opacity 0.2s;
+            pointer-events: none;
+        }
+
+        .hold-label {
+            position: absolute;
+            top: -20px;
+            left: -2px;
+            background: var(--box-color);
+            color: #000;
+            font-size: 10px;
+            font-weight: bold;
+            padding: 2px 4px;
+            border-radius: 2px;
+            white-space: nowrap;
+            opacity: var(--overlay-opacity);
+            pointer-events: none;
+        }
+
+        .hold-hitbox {
+            position: absolute;
+            /* Expand hitbox slightly outside the visual box */
+            top: -10px; left: -10px; right: -10px; bottom: -10px;
+            pointer-events: auto; /* Catch clicks */
+            cursor: pointer;
+            z-index: 10;
+        }
+
+        /* Hover effect via hitbox (requires adjacent sibling selector or JS) */
+        .hold-hitbox:hover + .hold-box {
+            background-color: rgba(34, 197, 94, 0.3);
+        }
+
+        /* Selected State */
+        .hold-group.selected {
+            z-index: 1000 !important; /* Bring to front */
+        }
+
+        .hold-group.selected .hold-box {
+            border-color: var(--selected-color);
+            background-color: rgba(252, 165, 165, 0.2);
+            border-width: 3px;
+            opacity: 1 !important; /* Selected always fully visible */
+            box-shadow: 0 0 10px var(--selected-color);
+        }
+
+        .hold-group.selected .hold-label {
+            background: var(--selected-color);
+            opacity: 1 !important;
+        }
+
+        /* Zoomed Out State (Low Scale) */
+        .canvas-container.zoom-low .hold-label {
+            display: none;
+        }
+
+        .canvas-container.zoom-low .hold-box {
+            border-width: 1px;
+            /* Opacity is driven by css var, but we might want it even lower in zoom-low, but var is fine for now */
+        }
+
+        /* --- Viewport Controls --- */
+        .viewport-controls {
+            position: absolute;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            gap: 0.5rem;
+            background: var(--panel-bg);
+            padding: 0.5rem;
+            border-radius: 0.5rem;
+            border: 1px solid var(--border-color);
+            z-index: 100;
+        }
+
+        .viewport-controls button {
+            background: rgba(255,255,255,0.1);
+            border: 1px solid var(--border-color);
+            color: white;
+            padding: 0.5rem 1rem;
+            border-radius: 0.25rem;
+            cursor: pointer;
+        }
+
+        .viewport-controls button:hover {
+            background: rgba(255,255,255,0.2);
+        }
+
+        /* --- Inspector Panel (Right Pane) --- */
+        .inspector-panel {
+            width: 350px;
+            background: var(--panel-bg);
+            border-left: 1px solid var(--border-color);
+            display: flex;
+            flex-direction: column;
+            overflow-y: auto;
+        }
+
+        .inspector-header {
+            padding: 1.5rem;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .inspector-header h2 {
+            margin: 0;
+            font-size: 1.2rem;
+        }
+
+        .inspector-body {
+            padding: 1.5rem;
+            flex: 1;
+        }
+
+        .empty-state {
+            color: #94a3b8;
+            text-align: center;
+            margin-top: 2rem;
+            font-style: italic;
+        }
+
+        /* Inspector Form */
+        .form-group {
+            margin-bottom: 1.25rem;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 0.5rem;
+            font-size: 0.85rem;
+            color: #94a3b8;
+            font-weight: 500;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        .form-control {
+            width: 100%;
+            padding: 0.75rem;
+            border-radius: 0.5rem;
+            border: 1px solid var(--border-color);
+            background: rgba(15, 23, 42, 0.5);
+            color: white;
+            box-sizing: border-box;
+            font-family: inherit;
+            font-size: 0.95rem;
+            transition: border-color 0.2s;
+        }
+
+        .form-control:focus {
+            outline: none;
+            border-color: var(--primary);
+        }
+
+        .form-control:read-only {
+            background: rgba(15, 23, 42, 0.3);
+            color: #cbd5e1;
+            cursor: default;
+        }
+        
+        .form-row {
+            display: flex;
+            gap: 1rem;
+        }
+        
+        .form-row .form-group {
+            flex: 1;
+        }
+
+        .checkbox-group {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            margin-bottom: 1rem;
+        }
+
+        .checkbox-group input {
+            width: 1.2rem;
+            height: 1.2rem;
+        }
+
+        .badge {
+            display: inline-block;
+            padding: 0.25rem 0.5rem;
+            border-radius: 0.25rem;
+            font-size: 0.75rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            background: rgba(59, 130, 246, 0.2);
+            color: #93c5fd;
+            border: 1px solid rgba(59, 130, 246, 0.5);
+            margin-bottom: 1rem;
+        }
+
+        /* Auth styling (reused from index) */
+        #auth-overlay {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: var(--bg-color); z-index: 9999;
+            display: flex; justify-content: center; align-items: center;
+        }
+        
+        #auth-card {
+            background: var(--panel-bg); padding: 2rem; border-radius: 1rem;
+            border: 1px solid var(--border-color); width: 300px;
+        }
+
+        button.primary-btn {
+            background-color: var(--primary); color: white; border: none;
+            padding: 0.75rem 1.5rem; border-radius: 0.5rem; cursor: pointer;
+            width: 100%; font-weight: 500;
+        }
+
+    </style>
+</head>
+<body>
+
+    <!-- Auth Overlay (Shown if credentials are missing) -->
+    <div id="auth-overlay" style="display: none;">
+        <div id="auth-card">
+            <h3 style="margin-top:0;">API Credentials</h3>
+            <div class="form-group">
+                <input type="text" id="username" class="form-control" placeholder="Username" value="w0nts4y">
+            </div>
+            <div class="form-group">
+                <input type="password" id="password" class="form-control" placeholder="Password" value="v3ryc00l">
+            </div>
+            <button id="auth-submit" class="primary-btn">Enter</button>
+        </div>
+    </div>
+
+    <!-- Main App -->
+    <header>
+        <div class="header-left">
+            <a href="/bbro" class="back-link">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
+                Dashboard
+            </a>
+            <h1>Wall Editor <span id="wall-id-badge" style="font-size: 0.8rem; color: #94a3b8; font-family: monospace; margin-left: 0.5rem;"></span></h1>
+        </div>
+        <div class="header-controls">
+            <label for="opacity-slider">Overlay Opacity</label>
+            <input type="range" id="opacity-slider" min="0" max="1" step="0.1" value="0.8">
+        </div>
+    </header>
+
+    <div class="editor-layout">
+        <!-- Viewport -->
+        <div class="main-viewport" id="viewport">
+            <div class="canvas-container" id="canvas-container">
+                <img id="wall-image" src="" alt="Original Wall">
+                <div id="holds-layer"></div>
+            </div>
+            
+            <div class="viewport-controls">
+                <button id="btn-zoom-out" title="Zoom Out">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="8" y1="11" x2="14" y2="11"/></svg>
+                </button>
+                <button id="btn-zoom-reset" title="Reset View">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+                </button>
+                <button id="btn-zoom-in" title="Zoom In">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="11" y1="8" x2="11" y2="14"/><line x1="8" y1="11" x2="14" y2="11"/></svg>
+                </button>
+            </div>
+        </div>
+
+        <!-- Inspector -->
+        <div class="inspector-panel">
+            <div class="inspector-header">
+                <h2>Hold Inspector</h2>
+            </div>
+            <div class="inspector-body" id="inspector-body">
+                <div class="empty-state">
+                    Select a hold on the wall to view its details.
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // --- State Model ---
+        const state = {
+            currentWall: null,
+            wallHolds: [],             // Array of hold objects
+            selectedHoldId: null,      // UUID string
+            
+            // Viewport State
+            scale: 1,
+            translateX: 0,
+            translateY: 0,
+            
+            // Image Dimensions (Source of truth for coordinates)
+            imageNaturalWidth: 0,
+            imageNaturalHeight: 0
+        };
+
+        // --- DOM Elements ---
+        const canvasContainer = document.getElementById('canvas-container');
+        const wallImage = document.getElementById('wall-image');
+        const holdsLayer = document.getElementById('holds-layer');
+        const viewport = document.getElementById('viewport');
+        
+        const btnZoomIn = document.getElementById('btn-zoom-in');
+        const btnZoomOut = document.getElementById('btn-zoom-out');
+        const btnZoomReset = document.getElementById('btn-zoom-reset');
+        
+        const opacitySlider = document.getElementById('opacity-slider');
+        const inspectorBody = document.getElementById('inspector-body');
+
+        // Extract Wall ID from URL: /bbro/walls/{wall_id}/edit
+        const cleanPath = window.location.pathname.replace(/\/$/, '');
+        const urlParts = cleanPath.split('/');
+        const wallId = urlParts[urlParts.length - 2];
+        document.getElementById('wall-id-badge').textContent = wallId.substring(0, 8) + '...';
+
+        // --- Auth ---
+        const getAuthHeaders = () => {
+            return {
+                'Authorization': 'Basic ' + btoa(localStorage.getItem('hd_username') + ':' + localStorage.getItem('hd_password'))
+            };
+        };
+
+        const checkAuthAndInit = () => {
+            if (!localStorage.getItem('hd_username') || !localStorage.getItem('hd_password')) {
+                document.getElementById('auth-overlay').style.display = 'flex';
+            } else {
+                initEditor();
+            }
+        };
+
+        document.getElementById('auth-submit').addEventListener('click', () => {
+            localStorage.setItem('hd_username', document.getElementById('username').value);
+            localStorage.setItem('hd_password', document.getElementById('password').value);
+            document.getElementById('auth-overlay').style.display = 'none';
+            initEditor();
+        });
+
+        // --- Init ---
+        async function initEditor() {
+            console.log("wallId", wallId);
+            try {
+                // 1. Fetch Wall Metadata
+                const wallRes = await fetch(`/bbro/api/walls/${wallId}`, { headers: getAuthHeaders() });
+                console.log("wallRes status", wallRes.status);
+                if (!wallRes.ok) throw new Error("Failed to load wall");
+                state.currentWall = await wallRes.json();
+                console.log("wallData", state.currentWall);
+                
+                // 2. Load Original Image
+                // We fetch the original image blob so we don't get cors/auth issues with img src directly
+                const imgRes = await fetch(`/bbro/api/walls/${wallId}/image`, { headers: getAuthHeaders() });
+                console.log("imgRes status", imgRes.status);
+                if (!imgRes.ok) throw new Error("Failed to load original image");
+                const blob = await imgRes.blob();
+                
+                wallImage.onload = () => {
+                    state.imageNaturalWidth = wallImage.naturalWidth;
+                    state.imageNaturalHeight = wallImage.naturalHeight;
+                    console.log("image dims", state.imageNaturalWidth, state.imageNaturalHeight);
+                    
+                    // Set container size to match natural size for 1:1 coordinate mapping
+                    canvasContainer.style.width = `${state.imageNaturalWidth}px`;
+                    canvasContainer.style.height = `${state.imageNaturalHeight}px`;
+                    
+                    resetViewport(); // Fit image to viewport
+                    loadHolds();     // Load holds after image is ready
+                };
+                wallImage.src = URL.createObjectURL(blob);
+                
+            } catch (err) {
+                console.error(err);
+                alert("Error initializing editor: " + err.message);
+            }
+        }
+
+        async function loadHolds() {
+            try {
+                const holdsRes = await fetch(`/bbro/api/walls/${wallId}/holds`, { headers: getAuthHeaders() });
+                console.log("holdsRes status", holdsRes.status);
+                if (!holdsRes.ok) throw new Error("Failed to load holds");
+                state.wallHolds = await holdsRes.json();
+                console.log("holds", state.wallHolds);
+                
+                renderHolds();
+            } catch (err) {
+                console.error(err);
+                alert("Error loading holds: " + err.message);
+            }
+        }
+
+        // --- Rendering Overlays ---
+        function renderHolds() {
+            // Clear existing
+            holdsLayer.innerHTML = '';
+            
+            if (!state.imageNaturalWidth || !state.imageNaturalHeight) return;
+
+            const fragment = document.createDocumentFragment();
+
+            state.wallHolds.forEach((hold, index) => {
+                // Determine z-index baseline. Later overlaps might need more logic, 
+                // but default DOM order is fine. Selected item gets z-index 1000 via CSS.
+                const baseZIndex = index;
+
+                // Convert pixels to percentages relative to original image dimensions
+                const leftPct = (hold.x1 / state.imageNaturalWidth) * 100;
+                const topPct = (hold.y1 / state.imageNaturalHeight) * 100;
+                const widthPct = ((hold.x2 - hold.x1) / state.imageNaturalWidth) * 100;
+                const heightPct = ((hold.y2 - hold.y1) / state.imageNaturalHeight) * 100;
+
+                const group = document.createElement('div');
+                group.className = 'hold-group';
+                if (hold.id === state.selectedHoldId) group.classList.add('selected');
+                
+                group.dataset.id = hold.id;
+                group.style.left = `${leftPct}%`;
+                group.style.top = `${topPct}%`;
+                group.style.width = `${widthPct}%`;
+                group.style.height = `${heightPct}%`;
+                group.style.zIndex = baseZIndex;
+
+                // Visual Box
+                const box = document.createElement('div');
+                box.className = 'hold-box';
+
+                // Label
+                const label = document.createElement('div');
+                label.className = 'hold-label';
+                label.textContent = hold.class_name || 'hold';
+
+                // Hitbox (catch clicks)
+                const hitbox = document.createElement('div');
+                hitbox.className = 'hold-hitbox';
+                
+                // Interaction
+                hitbox.addEventListener('mousedown', (e) => {
+                    // Prevent viewport drag from starting
+                    e.stopPropagation(); 
+                    selectHold(hold.id);
+                });
+
+                group.appendChild(box);
+                group.appendChild(hitbox);
+                // Note: hitbox + box in CSS means hitbox must be before box for adjacent sibling selector,
+                // but we appended box then hitbox. Let's fix sibling order for CSS hover.
+                // Actually CSS is: .hold-hitbox:hover + .hold-box
+                
+                // Re-append in correct order for CSS sibling selector
+                group.innerHTML = '';
+                group.appendChild(label);
+                group.appendChild(hitbox);
+                group.appendChild(box);
+
+                fragment.appendChild(group);
+            });
+
+            holdsLayer.appendChild(fragment);
+        }
+
+        // --- Selection & Inspector ---
+        function selectHold(holdId) {
+            // Unselect previous
+            if (state.selectedHoldId) {
+                const prev = holdsLayer.querySelector(`.hold-group[data-id="${state.selectedHoldId}"]`);
+                if (prev) prev.classList.remove('selected');
+            }
+
+            state.selectedHoldId = holdId;
+
+            // Select new
+            if (holdId) {
+                const curr = holdsLayer.querySelector(`.hold-group[data-id="${holdId}"]`);
+                if (curr) curr.classList.add('selected');
+            }
+
+            renderInspector();
+        }
+
+        function renderInspector() {
+            if (!state.selectedHoldId) {
+                inspectorBody.innerHTML = `<div class="empty-state">Select a hold on the wall to view its details.</div>`;
+                return;
+            }
+
+            const hold = state.wallHolds.find(h => h.id === state.selectedHoldId);
+            if (!hold) return;
+
+            // Render form layout. Inputs are readonly for now, but prepared for future.
+            inspectorBody.innerHTML = `
+                <div class="badge">${hold.source_type || 'Unknown Source'}</div>
+                
+                <div class="form-group">
+                    <label>Hold ID</label>
+                    <input type="text" class="form-control" value="${hold.id}" readonly style="font-family: monospace; font-size: 0.8rem;">
+                </div>
+
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Class Name</label>
+                        <input type="text" class="form-control" value="${hold.class_name || ''}" readonly>
+                    </div>
+                    <div class="form-group">
+                        <label>Confidence</label>
+                        <input type="text" class="form-control" value="${hold.confidence !== null ? (hold.confidence * 100).toFixed(1) + '%' : 'N/A'}" readonly>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label>Bounding Box (Pixels)</label>
+                    <div class="form-row" style="margin-bottom: 0.5rem;">
+                        <input type="text" class="form-control" value="x1: ${Math.round(hold.x1)}" readonly>
+                        <input type="text" class="form-control" value="y1: ${Math.round(hold.y1)}" readonly>
+                    </div>
+                    <div class="form-row">
+                        <input type="text" class="form-control" value="x2: ${Math.round(hold.x2)}" readonly>
+                        <input type="text" class="form-control" value="y2: ${Math.round(hold.y2)}" readonly>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label>Label Text</label>
+                    <input type="text" class="form-control" value="${hold.label_text || ''}" readonly placeholder="No label">
+                </div>
+
+                <div class="checkbox-group" style="margin-top: 2rem;">
+                    <input type="checkbox" id="chk-hidden" ${hold.is_hidden ? 'checked' : ''} disabled>
+                    <label style="margin: 0; color: #e2e8f0; font-size: 0.95rem; text-transform: none; letter-spacing: normal;">Hide this hold</label>
+                </div>
+                
+                <div class="checkbox-group">
+                    <input type="checkbox" id="chk-adjusted" ${hold.is_user_adjusted ? 'checked' : ''} disabled>
+                    <label style="margin: 0; color: #e2e8f0; font-size: 0.95rem; text-transform: none; letter-spacing: normal;">User adjusted</label>
+                </div>
+                
+                <p style="font-size: 0.8rem; color: #94a3b8; margin-top: 2rem; border-top: 1px solid var(--border-color); padding-top: 1rem;">
+                    Editing is disabled in this phase. The data structure is ready for future mutations.
+                </p>
+            `;
+        }
+
+        // --- Viewport Pan & Zoom ---
+        
+        const ZOOM_SPEED = 0.1;
+        const MAX_ZOOM = 5;
+        const MIN_ZOOM = 0.05; // allow very small for huge images
+
+        function updateTransform(useTransition = false) {
+            // Apply scale-based classes for density management
+            // If scale is small (zoomed out relative to image), add low-zoom class
+            // Note: scale here is CSS scale, not image scale. Because canvas is natural size, 
+            // a full-res phone image (3000px) fit to screen (1000px) gives scale ~0.3.
+            // Adjust threshold based on normal usage. We will use a semantic threshold:
+            // if apparent box size gets small, hide labels.
+            if (state.scale < 0.6) {
+                canvasContainer.classList.add('zoom-low');
+            } else {
+                canvasContainer.classList.remove('zoom-low');
+            }
+
+            canvasContainer.style.transition = useTransition ? 'transform 0.25s cubic-bezier(0.2, 0, 0, 1)' : 'none';
+            canvasContainer.style.transform = `translate(${state.translateX}px, ${state.translateY}px) scale(${state.scale})`;
+        }
+
+        function resetViewport() {
+            if (!state.imageNaturalWidth) return;
+            
+            // Calculate scale to fit image in viewport with some padding
+            const padding = 40;
+            const vw = viewport.clientWidth - padding;
+            const vh = viewport.clientHeight - padding;
+            
+            const scaleX = vw / state.imageNaturalWidth;
+            const scaleY = vh / state.imageNaturalHeight;
+            
+            state.scale = Math.min(scaleX, scaleY, 1); // Don't scale up past 100% by default
+            
+            // Center it
+            state.translateX = 0;
+            state.translateY = 0;
+            
+            updateTransform(true);
+            
+            // Deselect
+            selectHold(null);
+        }
+
+        // Mouse Drag Panning
+        let isDragging = false;
+        let startX, startY;
+        let initialTranslateX, initialTranslateY;
+
+        viewport.addEventListener('mousedown', (e) => {
+            // If clicking directly on viewport (not a hold), start pan or deselect
+            if (e.target === viewport || e.target === wallImage || e.target === holdsLayer) {
+                isDragging = true;
+                startX = e.clientX;
+                startY = e.clientY;
+                initialTranslateX = state.translateX;
+                initialTranslateY = state.translateY;
+                
+                // Deselect if clicking background
+                if (!e.shiftKey) selectHold(null);
+            }
+        });
+
+        window.addEventListener('mousemove', (e) => {
+            if (!isDragging) return;
+            e.preventDefault();
+            
+            const dx = e.clientX - startX;
+            const dy = e.clientY - startY;
+            
+            state.translateX = initialTranslateX + dx;
+            state.translateY = initialTranslateY + dy;
+            
+            updateTransform(false);
+        });
+
+        window.addEventListener('mouseup', () => {
+            if (isDragging) {
+                isDragging = false;
+            }
+        });
+
+        // Mouse Wheel Zooming
+        viewport.addEventListener('wheel', (e) => {
+            e.preventDefault();
+            
+            const delta = e.deltaY * -0.001;
+            let newScale = state.scale * (1 + delta); // Multiplicative zoom feels more natural
+            newScale = Math.min(Math.max(MIN_ZOOM, newScale), MAX_ZOOM);
+            
+            // Zoom towards mouse pointer logic
+            // 1. Get pointer position relative to viewport center
+            const rect = viewport.getBoundingClientRect();
+            const mouseX = e.clientX - rect.left - rect.width / 2;
+            const mouseY = e.clientY - rect.top - rect.height / 2;
+            
+            // 2. Adjust translation to keep the "mouse point" fixed
+            // The ratio of old vs new scale gives us how much the translation should change
+            const scaleRatio = newScale / state.scale;
+            state.translateX = mouseX - (mouseX - state.translateX) * scaleRatio;
+            state.translateY = mouseY - (mouseY - state.translateY) * scaleRatio;
+            
+            state.scale = newScale;
+            updateTransform(false);
+        });
+
+        // Button Controls
+        btnZoomIn.addEventListener('click', () => {
+             state.scale = Math.min(state.scale * 1.5, MAX_ZOOM);
+             updateTransform(true);
+        });
+        
+        btnZoomOut.addEventListener('click', () => {
+             state.scale = Math.max(state.scale / 1.5, MIN_ZOOM);
+             updateTransform(true);
+        });
+        
+        btnZoomReset.addEventListener('click', resetViewport);
+
+        // --- Opacity Control ---
+        opacitySlider.addEventListener('input', (e) => {
+            document.documentElement.style.setProperty('--overlay-opacity', e.target.value);
+        });
+
+        // Start
+        checkAuthAndInit();
+
+    </script>
+</body>
+</html>
