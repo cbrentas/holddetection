@@ -192,6 +192,25 @@
             opacity: 1 !important;
         }
 
+        /* Resize Handles - only visible when selected */
+        .hold-group.selected .resize-handle {
+            position: absolute;
+            width: 10px;
+            height: 10px;
+            background: white;
+            border: 2px solid var(--primary);
+            border-radius: 50%;
+            z-index: 1001; /* Above the label */
+            pointer-events: auto; /* Catch drags */
+            /* Offset so they center on the corner */
+            transform: translate(-50%, -50%);
+        }
+        
+        .hold-group.selected .resize-handle.nw { top: 0; left: 0; cursor: nwse-resize; }
+        .hold-group.selected .resize-handle.ne { top: 0; left: 100%; cursor: nesw-resize; }
+        .hold-group.selected .resize-handle.sw { top: 100%; left: 0; cursor: nesw-resize; }
+        .hold-group.selected .resize-handle.se { top: 100%; left: 100%; cursor: nwse-resize; }
+
         /* Hidden State */
         .hold-group.hidden {
             opacity: 0.3 !important;
@@ -212,6 +231,12 @@
 
         .canvas-container.adding-hold {
             cursor: crosshair;
+        }
+
+        /* Canvas is-editing state (dim other holds) */
+        .canvas-container.is-editing .hold-group:not(.selected) {
+            opacity: 0.2 !important;
+            pointer-events: none;
         }
 
         /* Zoomed Out State (Low Scale) */
@@ -564,6 +589,23 @@
             }
         }
 
+        async function deleteHold(id) {
+            if (!confirm("Are you sure you want to delete this hold?")) return;
+            try {
+                const res = await fetch(`/bbro/api/walls/${wallId}/holds/${id}`, {
+                    method: 'DELETE',
+                    headers: getAuthHeaders()
+                });
+                if (!res.ok) throw new Error("Failed to delete hold");
+                
+                selectHold(null);
+                await loadHolds();
+            } catch (err) {
+                console.error("Delete hold error:", err);
+                alert("Error deleting hold. Check console.");
+            }
+        }
+
         // Converts mouse position (viewport space) → image coordinate space
         // IMPORTANT:
         // - Must account for zoom + pan offsets
@@ -699,6 +741,7 @@
                 // Escape key should cancel and restore original position
                 label.addEventListener('mousedown', (e) => {
                     e.stopPropagation(); 
+                    if (state.dragState || state.isAddingHold) return;
                     selectHold(hold.id);
                     state.dragState = {
                         type: 'label',
@@ -719,20 +762,57 @@
                 hitbox.addEventListener('mousedown', (e) => {
                     // Prevent viewport drag from starting
                     e.stopPropagation(); 
-                    selectHold(hold.id);
+                    if (state.dragState || state.isAddingHold) return;
+                    
+                    if (state.selectedHoldId !== hold.id) {
+                        selectHold(hold.id);
+                    } else {
+                        // Init move if already selected
+                        state.dragState = {
+                            type: 'hold-move',
+                            holdId: hold.id,
+                            startX: e.clientX,
+                            startY: e.clientY,
+                            origX1: hold.x1,
+                            origY1: hold.y1,
+                            origX2: hold.x2,
+                            origY2: hold.y2,
+                            element: group
+                        };
+                        canvasContainer.classList.add('is-editing');
+                    }
                 });
 
-                group.appendChild(box);
-                group.appendChild(hitbox);
-                // Note: hitbox + box in CSS means hitbox must be before box for adjacent sibling selector,
-                // but we appended box then hitbox. Let's fix sibling order for CSS hover.
-                // Actually CSS is: .hold-hitbox:hover + .hold-box
-                
                 // Re-append in correct order for CSS sibling selector
                 group.innerHTML = '';
                 group.appendChild(label);
                 group.appendChild(hitbox);
                 group.appendChild(box);
+
+                if (hold.id === state.selectedHoldId) {
+                    ['nw', 'ne', 'sw', 'se'].forEach(corner => {
+                        const handle = document.createElement('div');
+                        handle.className = `resize-handle ${corner}`;
+                        handle.addEventListener('mousedown', (e) => {
+                            e.stopPropagation();
+                            if (state.dragState || state.isAddingHold) return;
+                            state.dragState = {
+                                type: 'hold-resize',
+                                handle: corner,
+                                holdId: hold.id,
+                                startX: e.clientX,
+                                startY: e.clientY,
+                                origX1: hold.x1,
+                                origY1: hold.y1,
+                                origX2: hold.x2,
+                                origY2: hold.y2,
+                                element: group
+                            };
+                            canvasContainer.classList.add('is-editing');
+                        });
+                        group.appendChild(handle);
+                    });
+                }
 
                 fragment.appendChild(group);
             });
@@ -805,15 +885,22 @@
                     <input type="text" class="form-control" id="inp-label-text" value="${hold.label_text || ''}" placeholder="No label">
                 </div>
 
-                <div class="checkbox-group" style="margin-top: 2rem;">
+                <div class="checkbox-group" style="margin-top: 1.5rem; margin-bottom: 0.5rem;">
                     <input type="checkbox" id="chk-hidden" ${hold.is_hidden ? 'checked' : ''}>
                     <label style="margin: 0; color: #e2e8f0; font-size: 0.95rem; text-transform: none; letter-spacing: normal;">Hide this hold</label>
                 </div>
+                ${hold.source_type !== 'manual' ? '<p style="font-size: 0.8rem; color: #94a3b8; margin: 0 0 1rem 0;">Model holds cannot be physically deleted, only hidden.</p>' : ''}
                 
-                <div class="checkbox-group">
+                <div class="checkbox-group" style="margin-bottom: ${hold.source_type === 'manual' ? '1.5rem' : '0'};">
                     <input type="checkbox" id="chk-adjusted" ${hold.is_user_adjusted ? 'checked' : ''} disabled>
                     <label style="margin: 0; color: #e2e8f0; font-size: 0.95rem; text-transform: none; letter-spacing: normal;">User adjusted</label>
                 </div>
+
+                ${hold.source_type === 'manual' ? `
+                <button id="btn-delete-hold" style="width: 100%; padding: 0.75rem; background: rgba(239, 68, 68, 0.2); border: 1px solid #ef4444; color: #fca5a5; border-radius: 0.5rem; cursor: pointer; font-weight: bold; transition: all 0.2s;">
+                    Delete Hold
+                </button>
+                ` : ''}
             `;
             
             // Attach event listeners for immediate save
@@ -826,6 +913,12 @@
             document.getElementById('chk-hidden').addEventListener('change', (e) => {
                 saveHold(hold.id, { is_hidden: e.target.checked });
             });
+
+            if (hold.source_type === 'manual') {
+                document.getElementById('btn-delete-hold').addEventListener('click', () => {
+                    deleteHold(hold.id);
+                });
+            }
         }
 
         // --- Viewport Pan & Zoom ---
@@ -932,6 +1025,71 @@
                 return;
             }
 
+            if (state.dragState && state.dragState.type === 'hold-move') {
+                e.preventDefault();
+                const dx = (e.clientX - state.dragState.startX) / state.scale;
+                const dy = (e.clientY - state.dragState.startY) / state.scale;
+
+                let newX1 = state.dragState.origX1 + dx;
+                let newY1 = state.dragState.origY1 + dy;
+                let newX2 = state.dragState.origX2 + dx;
+                let newY2 = state.dragState.origY2 + dy;
+
+                state.dragState.currentX1 = newX1;
+                state.dragState.currentY1 = newY1;
+                state.dragState.currentX2 = newX2;
+                state.dragState.currentY2 = newY2;
+
+                const leftPct = (newX1 / state.imageNaturalWidth) * 100;
+                const topPct = (newY1 / state.imageNaturalHeight) * 100;
+
+                state.dragState.element.style.left = `${leftPct}%`;
+                state.dragState.element.style.top = `${topPct}%`;
+                return;
+            }
+
+            if (state.dragState && state.dragState.type === 'hold-resize') {
+                e.preventDefault();
+                const dx = (e.clientX - state.dragState.startX) / state.scale;
+                const dy = (e.clientY - state.dragState.startY) / state.scale;
+
+                let newX1 = state.dragState.origX1;
+                let newY1 = state.dragState.origY1;
+                let newX2 = state.dragState.origX2;
+                let newY2 = state.dragState.origY2;
+
+                if (state.dragState.handle.includes('w')) newX1 += dx;
+                if (state.dragState.handle.includes('e')) newX2 += dx;
+                if (state.dragState.handle.includes('n')) newY1 += dy;
+                if (state.dragState.handle.includes('s')) newY2 += dy;
+
+                // Enforce minimum size (5px)
+                if (newX2 - newX1 < 5) {
+                    if (state.dragState.handle.includes('w')) newX1 = newX2 - 5;
+                    else newX2 = newX1 + 5;
+                }
+                if (newY2 - newY1 < 5) {
+                    if (state.dragState.handle.includes('n')) newY1 = newY2 - 5;
+                    else newY2 = newY1 + 5;
+                }
+
+                state.dragState.currentX1 = newX1;
+                state.dragState.currentY1 = newY1;
+                state.dragState.currentX2 = newX2;
+                state.dragState.currentY2 = newY2;
+
+                const leftPct = (newX1 / state.imageNaturalWidth) * 100;
+                const topPct = (newY1 / state.imageNaturalHeight) * 100;
+                const widthPct = ((newX2 - newX1) / state.imageNaturalWidth) * 100;
+                const heightPct = ((newY2 - newY1) / state.imageNaturalHeight) * 100;
+
+                state.dragState.element.style.left = `${leftPct}%`;
+                state.dragState.element.style.top = `${topPct}%`;
+                state.dragState.element.style.width = `${widthPct}%`;
+                state.dragState.element.style.height = `${heightPct}%`;
+                return;
+            }
+
             if (state.isAddingHold && tempHoldBox.style.display === 'block') {
                 e.preventDefault();
                 const coords = getViewportToImageCoords(e.clientX, e.clientY);
@@ -965,6 +1123,22 @@
                     label_y: newY
                 });
                 
+                state.dragState = null;
+                return;
+            }
+
+            if (state.dragState && (state.dragState.type === 'hold-move' || state.dragState.type === 'hold-resize')) {
+                if (state.dragState.currentX1 !== undefined) {
+                    saveHold(state.dragState.holdId, {
+                        x1: state.dragState.currentX1,
+                        y1: state.dragState.currentY1,
+                        x2: state.dragState.currentX2,
+                        y2: state.dragState.currentY2
+                    });
+                } else if (state.dragState.type === 'hold-move') {
+                    // Clicked without moving
+                }
+                canvasContainer.classList.remove('is-editing');
                 state.dragState = null;
                 return;
             }
@@ -1043,6 +1217,7 @@
                 // Cancel drag
                 if (state.dragState) {
                     // Restore original visual
+                    canvasContainer.classList.remove('is-editing');
                     renderHolds(); 
                     state.dragState = null;
                 }
