@@ -152,7 +152,12 @@
             border-radius: 2px;
             white-space: nowrap;
             opacity: var(--overlay-opacity);
-            pointer-events: none;
+            pointer-events: auto;
+            cursor: grab;
+        }
+        
+        .hold-label:active {
+            cursor: grabbing;
         }
 
         .hold-hitbox {
@@ -185,6 +190,28 @@
         .hold-group.selected .hold-label {
             background: var(--selected-color);
             opacity: 1 !important;
+        }
+
+        /* Hidden State */
+        .hold-group.hidden {
+            opacity: 0.3 !important;
+        }
+        .hold-group.hidden .hold-box {
+            border-style: dashed;
+        }
+
+        /* Temp Hold Box for Adding */
+        #temp-hold-box {
+            position: absolute;
+            border: 2px dashed var(--primary);
+            background-color: rgba(59, 130, 246, 0.2);
+            pointer-events: none;
+            z-index: 2000;
+            display: none;
+        }
+
+        .canvas-container.adding-hold {
+            cursor: crosshair;
         }
 
         /* Zoomed Out State (Low Scale) */
@@ -387,9 +414,14 @@
             <div class="canvas-container" id="canvas-container">
                 <img id="wall-image" src="" alt="Original Wall">
                 <div id="holds-layer"></div>
+                <div id="temp-hold-box"></div>
             </div>
             
             <div class="viewport-controls">
+                <button id="btn-add-hold" title="Add Hold" style="background: rgba(59, 130, 246, 0.2); border-color: var(--primary); color: #93c5fd;">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                </button>
+                <div style="width: 1px; background: var(--border-color); margin: 0 0.25rem;"></div>
                 <button id="btn-zoom-out" title="Zoom Out">
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="8" y1="11" x2="14" y2="11"/></svg>
                 </button>
@@ -429,7 +461,14 @@
             
             // Image Dimensions (Source of truth for coordinates)
             imageNaturalWidth: 0,
-            imageNaturalHeight: 0
+            imageNaturalHeight: 0,
+
+            // Interaction State
+            isAddingHold: false,
+            addStartX: 0,
+            addStartY: 0,
+            
+            dragState: null // For label dragging
         };
 
         // --- DOM Elements ---
@@ -437,10 +476,12 @@
         const wallImage = document.getElementById('wall-image');
         const holdsLayer = document.getElementById('holds-layer');
         const viewport = document.getElementById('viewport');
+        const tempHoldBox = document.getElementById('temp-hold-box');
         
         const btnZoomIn = document.getElementById('btn-zoom-in');
         const btnZoomOut = document.getElementById('btn-zoom-out');
         const btnZoomReset = document.getElementById('btn-zoom-reset');
+        const btnAddHold = document.getElementById('btn-add-hold');
         
         const opacitySlider = document.getElementById('opacity-slider');
         const inspectorBody = document.getElementById('inspector-body');
@@ -472,6 +513,74 @@
             document.getElementById('auth-overlay').style.display = 'none';
             initEditor();
         });
+
+        // --- API Helpers ---
+        // Sends partial updates to backend and merges response into local state
+        // IMPORTANT:
+        // - Backend is source of truth
+        // - Always update state.wallHolds after response
+        // - Do NOT mutate state optimistically without syncing response
+        async function saveHold(id, payload) {
+            try {
+                const res = await fetch(`/bbro/api/walls/${wallId}/holds/${id}`, {
+                    method: 'PATCH',
+                    headers: {
+                        ...getAuthHeaders(),
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(payload)
+                });
+                if (!res.ok) throw new Error("Failed to save hold");
+                const resData = await res.json();
+                
+                // Full reload to ensure state consistency with backend
+                await loadHolds();
+            } catch (err) {
+                console.error("Save hold error:", err);
+                alert("Error saving changes. Check console.");
+            }
+        }
+
+        // Creates a new manual hold on backend and inserts into local state
+        // source_type must be "manual" (backend enforces this)
+        async function createHold(holdData) {
+            try {
+                const res = await fetch(`/bbro/api/walls/${wallId}/holds`, {
+                    method: 'POST',
+                    headers: {
+                        ...getAuthHeaders(),
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(holdData)
+                });
+                if (!res.ok) throw new Error("Failed to create hold");
+                const resData = await res.json();
+                
+                await loadHolds();
+                selectHold(resData.id);
+            } catch (err) {
+                console.error("Create hold error:", err);
+                alert("Error creating hold. Check console.");
+            }
+        }
+
+        // Converts mouse position (viewport space) → image coordinate space
+        // IMPORTANT:
+        // - Must account for zoom + pan offsets
+        // - All backend values are stored in image coordinates
+        // - If this breaks, holds will drift or save incorrectly
+        function getViewportToImageCoords(clientX, clientY) {
+            const rect = canvasContainer.getBoundingClientRect();
+            // Calculate position relative to container, taking scale into account
+            const x = (clientX - rect.left) / state.scale;
+            const y = (clientY - rect.top) / state.scale;
+            
+            // Constrain to image bounds
+            return {
+                x: Math.max(0, Math.min(x, state.imageNaturalWidth)),
+                y: Math.max(0, Math.min(y, state.imageNaturalHeight))
+            };
+        }
 
         // --- Init ---
         async function initEditor() {
@@ -549,6 +658,7 @@
                 const group = document.createElement('div');
                 group.className = 'hold-group';
                 if (hold.id === state.selectedHoldId) group.classList.add('selected');
+                if (hold.is_hidden) group.classList.add('hidden');
                 
                 group.dataset.id = hold.id;
                 group.style.left = `${leftPct}%`;
@@ -565,6 +675,41 @@
                 const label = document.createElement('div');
                 label.className = 'hold-label';
                 label.textContent = hold.class_name || 'hold';
+                
+                // If label has custom position, apply it
+                // Custom positions are stored as absolute image coordinates,
+                // but we are positioning the label relative to the hold's top-left corner.
+                if (hold.label_x !== null && hold.label_y !== null) {
+                    const labelRelX = hold.label_x - hold.x1;
+                    const labelRelY = hold.label_y - hold.y1;
+                    
+                    // Convert back to scale-independent CSS pixels relative to the hold container
+                    const relXpct = (labelRelX / (hold.x2 - hold.x1)) * 100;
+                    const relYpct = (labelRelY / (hold.y2 - hold.y1)) * 100;
+                    
+                    label.style.left = `${relXpct}%`;
+                    label.style.top = `${relYpct}%`;
+                    // Override default top/left positioning overrides
+                    label.style.marginLeft = '0';
+                    label.style.marginTop = '0';
+                }
+
+                // Dragging label only updates label position (not bbox)
+                // Stop propagation to avoid triggering viewport pan
+                // Escape key should cancel and restore original position
+                label.addEventListener('mousedown', (e) => {
+                    e.stopPropagation(); 
+                    selectHold(hold.id);
+                    state.dragState = {
+                        type: 'label',
+                        holdId: hold.id,
+                        startX: e.clientX,
+                        startY: e.clientY,
+                        originalX: hold.label_x !== null ? hold.label_x : hold.x1,
+                        originalY: hold.label_y !== null ? hold.label_y : hold.y1 - 20,
+                        element: label
+                    };
+                });
 
                 // Hitbox (catch clicks)
                 const hitbox = document.createElement('div');
@@ -635,7 +780,7 @@
                 <div class="form-row">
                     <div class="form-group">
                         <label>Class Name</label>
-                        <input type="text" class="form-control" value="${hold.class_name || ''}" readonly>
+                        <input type="text" class="form-control" id="inp-class-name" value="${hold.class_name || ''}">
                     </div>
                     <div class="form-group">
                         <label>Confidence</label>
@@ -657,11 +802,11 @@
 
                 <div class="form-group">
                     <label>Label Text</label>
-                    <input type="text" class="form-control" value="${hold.label_text || ''}" readonly placeholder="No label">
+                    <input type="text" class="form-control" id="inp-label-text" value="${hold.label_text || ''}" placeholder="No label">
                 </div>
 
                 <div class="checkbox-group" style="margin-top: 2rem;">
-                    <input type="checkbox" id="chk-hidden" ${hold.is_hidden ? 'checked' : ''} disabled>
+                    <input type="checkbox" id="chk-hidden" ${hold.is_hidden ? 'checked' : ''}>
                     <label style="margin: 0; color: #e2e8f0; font-size: 0.95rem; text-transform: none; letter-spacing: normal;">Hide this hold</label>
                 </div>
                 
@@ -669,11 +814,18 @@
                     <input type="checkbox" id="chk-adjusted" ${hold.is_user_adjusted ? 'checked' : ''} disabled>
                     <label style="margin: 0; color: #e2e8f0; font-size: 0.95rem; text-transform: none; letter-spacing: normal;">User adjusted</label>
                 </div>
-                
-                <p style="font-size: 0.8rem; color: #94a3b8; margin-top: 2rem; border-top: 1px solid var(--border-color); padding-top: 1rem;">
-                    Editing is disabled in this phase. The data structure is ready for future mutations.
-                </p>
             `;
+            
+            // Attach event listeners for immediate save
+            document.getElementById('inp-class-name').addEventListener('change', (e) => {
+                saveHold(hold.id, { class_name: e.target.value.trim() });
+            });
+            document.getElementById('inp-label-text').addEventListener('change', (e) => {
+                saveHold(hold.id, { label_text: e.target.value.trim() });
+            });
+            document.getElementById('chk-hidden').addEventListener('change', (e) => {
+                saveHold(hold.id, { is_hidden: e.target.checked });
+            });
         }
 
         // --- Viewport Pan & Zoom ---
@@ -722,26 +874,71 @@
             selectHold(null);
         }
 
-        // Mouse Drag Panning
+        // Mouse Drag Panning / Box Drawing
         let isDragging = false;
         let startX, startY;
         let initialTranslateX, initialTranslateY;
 
         viewport.addEventListener('mousedown', (e) => {
-            // If clicking directly on viewport (not a hold), start pan or deselect
-            if (e.target === viewport || e.target === wallImage || e.target === holdsLayer) {
-                isDragging = true;
-                startX = e.clientX;
-                startY = e.clientY;
-                initialTranslateX = state.translateX;
-                initialTranslateY = state.translateY;
-                
-                // Deselect if clicking background
-                if (!e.shiftKey) selectHold(null);
+            // Cancel other interactions if we click in the viewport background
+            if (e.target === viewport || e.target === wallImage || e.target === holdsLayer || e.target === canvasContainer) {
+                if (state.isAddingHold) {
+                    // Start drawing box
+                    const coords = getViewportToImageCoords(e.clientX, e.clientY);
+                    state.addStartX = coords.x;
+                    state.addStartY = coords.y;
+                    
+                    // Show temp box
+                    tempHoldBox.style.display = 'block';
+                    updateTempBox(coords.x, coords.y, coords.x, coords.y);
+                } else {
+                    // Start pan
+                    isDragging = true;
+                    startX = e.clientX;
+                    startY = e.clientY;
+                    initialTranslateX = state.translateX;
+                    initialTranslateY = state.translateY;
+                    
+                    // Deselect if clicking background
+                    if (!e.shiftKey) selectHold(null);
+                }
             }
         });
 
         window.addEventListener('mousemove', (e) => {
+            if (state.dragState && state.dragState.type === 'label') {
+                e.preventDefault();
+                // Dragging label only updates label position (not bbox)
+                const dx = (e.clientX - state.dragState.startX) / state.scale;
+                const dy = (e.clientY - state.dragState.startY) / state.scale;
+                
+                const currentHold = state.wallHolds.find(h => h.id === state.dragState.holdId);
+                if (currentHold) {
+                    const newX = state.dragState.originalX + dx;
+                    const newY = state.dragState.originalY + dy;
+                    
+                    // Relative to hold top left
+                    const labelRelX = newX - currentHold.x1;
+                    const labelRelY = newY - currentHold.y1;
+                    
+                    const relXpct = (labelRelX / (currentHold.x2 - currentHold.x1)) * 100;
+                    const relYpct = (labelRelY / (currentHold.y2 - currentHold.y1)) * 100;
+                    
+                    state.dragState.element.style.left = `${relXpct}%`;
+                    state.dragState.element.style.top = `${relYpct}%`;
+                    state.dragState.element.style.marginLeft = '0';
+                    state.dragState.element.style.marginTop = '0';
+                }
+                return;
+            }
+
+            if (state.isAddingHold && tempHoldBox.style.display === 'block') {
+                e.preventDefault();
+                const coords = getViewportToImageCoords(e.clientX, e.clientY);
+                updateTempBox(state.addStartX, state.addStartY, coords.x, coords.y);
+                return;
+            }
+
             if (!isDragging) return;
             e.preventDefault();
             
@@ -754,9 +951,107 @@
             updateTransform(false);
         });
 
-        window.addEventListener('mouseup', () => {
+        window.addEventListener('mouseup', (e) => {
+            if (state.dragState && state.dragState.type === 'label') {
+                const dx = (e.clientX - state.dragState.startX) / state.scale;
+                const dy = (e.clientY - state.dragState.startY) / state.scale;
+                
+                const newX = state.dragState.originalX + dx;
+                const newY = state.dragState.originalY + dy;
+                
+                // Save label coords
+                saveHold(state.dragState.holdId, {
+                    label_x: newX,
+                    label_y: newY
+                });
+                
+                state.dragState = null;
+                return;
+            }
+
+            if (state.isAddingHold && tempHoldBox.style.display === 'block') {
+                tempHoldBox.style.display = 'none';
+                
+                const coords = getViewportToImageCoords(e.clientX, e.clientY);
+                const x1 = Math.min(state.addStartX, coords.x);
+                const y1 = Math.min(state.addStartY, coords.y);
+                const x2 = Math.max(state.addStartX, coords.x);
+                const y2 = Math.max(state.addStartY, coords.y);
+                
+                // Minimum box size guard
+                if (x2 - x1 > 5 && y2 - y1 > 5) {
+                    createHold({
+                        x1, y1, x2, y2,
+                        class_name: 'hold',
+                        is_hidden: false,
+                        label_text: 'Manual'
+                    });
+                }
+                
+                exitAddMode();
+                return;
+            }
+
             if (isDragging) {
                 isDragging = false;
+            }
+        });
+
+        function updateTempBox(startX, startY, endX, endY) {
+            const x = Math.min(startX, endX);
+            const y = Math.min(startY, endY);
+            const w = Math.abs(endX - startX);
+            const h = Math.abs(endY - startY);
+            
+            const leftPct = (x / state.imageNaturalWidth) * 100;
+            const topPct = (y / state.imageNaturalHeight) * 100;
+            const widthPct = (w / state.imageNaturalWidth) * 100;
+            const heightPct = (h / state.imageNaturalHeight) * 100;
+            
+            tempHoldBox.style.left = `${leftPct}%`;
+            tempHoldBox.style.top = `${topPct}%`;
+            tempHoldBox.style.width = `${widthPct}%`;
+            tempHoldBox.style.height = `${heightPct}%`;
+        }
+
+        // When true, viewport interactions are disabled and drag creates new hold bbox
+        // IMPORTANT:
+        // - Must not conflict with pan/zoom
+        // - Escape cancels mode
+        btnAddHold.addEventListener('click', () => {
+            if (state.isAddingHold) {
+                exitAddMode();
+            } else {
+                state.isAddingHold = true;
+                btnAddHold.style.background = 'var(--primary)';
+                btnAddHold.style.color = 'white';
+                canvasContainer.classList.add('adding-hold');
+            }
+        });
+
+        function exitAddMode() {
+            state.isAddingHold = false;
+            btnAddHold.style.background = 'rgba(59, 130, 246, 0.2)';
+            btnAddHold.style.color = '#93c5fd';
+            canvasContainer.classList.remove('adding-hold');
+            tempHoldBox.style.display = 'none';
+        }
+
+        // Keyboard Escape
+        window.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') {
+                // Cancel drag
+                if (state.dragState) {
+                    // Restore original visual
+                    renderHolds(); 
+                    state.dragState = null;
+                }
+                // Cancel add hold mode
+                if (state.isAddingHold) {
+                    exitAddMode();
+                }
+                // Deselect hold
+                selectHold(null);
             }
         });
 
