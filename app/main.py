@@ -1,10 +1,10 @@
 from fastapi import FastAPI, UploadFile, File, Depends
 from sqlalchemy.orm import Session
+from sqlalchemy import desc
 from pathlib import Path
-import shutil
 import uuid
 from app.db.session import get_db
-from app.db.models import Upload, Job, JobStatus
+from app.db.models import Upload, Job, JobStatus, Model, TrainingRun, Wall, WallHold
 from app.core.settings import settings
 from app.core.security import basic_auth
 from app.core.storage.service import storage
@@ -12,7 +12,6 @@ from app.core.storage.service import storage
 from fastapi.responses import FileResponse, RedirectResponse
 from fastapi import HTTPException
 from fastapi.staticfiles import StaticFiles
-import os
 
 from fastapi import APIRouter
 
@@ -121,8 +120,7 @@ def get_result_image(job_id: str, db: Session = Depends(get_db), username: str =
 
     return FileResponse(local_path)
 
-from sqlalchemy import desc
-from app.db.models import Model, TrainingRun, Job, Wall, WallHold
+
 
 @api_router.get("/dashboard/stats")
 def get_dashboard_stats(db: Session = Depends(get_db), username: str = Depends(basic_auth)):

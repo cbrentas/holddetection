@@ -26,6 +26,8 @@ annotated image generated
 wall and holds projected
    ↓
 persistent wall API exposed
+   ↓
+interactive wall editor UI
 ```
 
 ## Components
@@ -33,7 +35,8 @@ persistent wall API exposed
 The system is composed of several distinct and loosely coupled components:
 
 - **FastAPI backend**: API gateway serving routes and managing the UI.
-- **Wall API**: Read-only REST endpoints exposing generated walls and wall holds.
+- **Wall API**: Read-only and editor REST endpoints exposing generated walls and wall holds.
+- **Wall Editor UI**: A lightweight, vanilla JS frontend for interactively modifying, hiding, or manually adding bounding boxes on dense spray walls.
 - **Async inference worker**: Continuous background process running ML models.
 - **PostgreSQL database**: Stores metadata for models, datasets, jobs, walls, and predictions.
 - **Storage abstraction**: Encapsulates file operations to allow easy switching of backend storage layers.
@@ -117,7 +120,6 @@ In production, the system runs on a VPS behind an nginx reverse proxy and operat
 
 Planned additions include:
 
-- **Annotation editor**: Interface to adjust bounding boxes interactively via the persistent `wall_holds` layer.
 - **Dataset generation**: Pipelines to build new datasets from edited annotations.
 - **Automated training pipeline**: Triggering finetuning directly from the backend.
 - **Route creation tools**: Group holds into documented climbing boulders.

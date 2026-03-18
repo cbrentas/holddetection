@@ -1,29 +1,40 @@
 # Python
 __pycache__/
-*.pyc
-*.pyo
-*.pyd
+*.py[cod]
+*$py.class
 *.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
 *.egg-info/
-.venv/
+.installed.cfg
+*.egg
+.pytest_cache/
+.coverage
+htmlcov/
+.venv
 venv/
+ENV/
 
 # Environment
 .env
 
-# Storage runtime data
-storage/*
-!storage/.gitkeep
+# MacOS
+.DS_Store
 
-# keep structure
-!storage/models/
-!storage/uploads/
-!storage/results/
-
-# keep placeholder files
-!storage/models/.gitkeep
-!storage/uploads/.gitkeep
-!storage/results/.gitkeep
+# IDE
+.vscode/
+.idea/
 
 # Alembic cache
 alembic/versions/*.pyc
@@ -32,11 +43,14 @@ alembic/versions/*.pyc
 *.log
 *.pid
 
-# OS
-.DS_Store
-
+# Systemd services
 holddetection-api.service
 holddetection-worker.service
 
-
-tnega/*
+# Storage - Ignore contents but keep structure
+storage/models/*
+!storage/models/.gitkeep
+storage/uploads/*
+!storage/uploads/.gitkeep
+storage/results/*
+!storage/results/.gitkeep
