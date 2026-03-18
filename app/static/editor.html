@@ -212,10 +212,10 @@
         .hold-group.selected .resize-handle.se { top: 100%; left: 100%; cursor: nwse-resize; }
 
         /* Hidden State */
-        .hold-group.hidden {
-            opacity: 0.3 !important;
+        .hold-group.hidden:not(.selected) {
+            display: none !important;
         }
-        .hold-group.hidden .hold-box {
+        .hold-group.hidden:not(.selected) .hold-box {
             border-style: dashed;
         }
 
@@ -240,7 +240,7 @@
         }
 
         /* Zoomed Out State (Low Scale) */
-        .canvas-container.zoom-low .hold-label {
+        .canvas-container.zoom-low .hold-group:not(.selected) .hold-label {
             display: none;
         }
 
@@ -249,7 +249,33 @@
             /* Opacity is driven by css var, but we might want it even lower in zoom-low, but var is fine for now */
         }
 
-        /* --- Viewport Controls --- */
+        
+        /* --- Inspector Tabs --- */
+        .inspector-tabs { display: flex; border-bottom: 1px solid var(--border-color); background: rgba(15, 23, 42, 0.5); flex-shrink: 0;}
+        .tab-btn { flex: 1; padding: 1rem 0; background: none; border: none; border-bottom: 2px solid transparent; color: #94a3b8; cursor: pointer; font-weight: 600; transition: all 0.2s; font-size: 0.85rem; }
+        .tab-btn:hover { color: var(--text-color); }
+        .tab-btn.active { color: var(--primary); border-bottom-color: var(--primary); background: rgba(59, 130, 246, 0.1); }
+        .tab-content { display: none; flex: 1; overflow-y: hidden; flex-direction: column; } /* hidden because inner has auto */
+        .tab-content.active { display: flex; }
+
+        /* List */
+        .hold-list-container { flex: 1; overflow-y: auto; }
+        .hold-list-item { padding: 0.75rem 1rem; border-bottom: 1px solid rgba(255,255,255,0.05); cursor: pointer; display: flex; justify-content: space-between; align-items: center; font-size: 0.85rem; }
+        .hold-list-item:hover { background: rgba(255,255,255,0.05); }
+        .hold-list-item.selected { background: rgba(59, 130, 246, 0.2); border-left: 3px solid var(--primary); }
+        .hold-list-item.hidden-item { opacity: 0.5; font-style: italic; }
+
+        /* Display Modes & View Toggles */
+        .canvas-container.mode-overview .hold-group:not(.selected) .hold-label { display: none; }
+        .canvas-container.mode-edit .hold-group:not(.selected) { opacity: 0.35 !important; }
+        
+        /* Toggles */
+        .canvas-container.hide-boxes .hold-group:not(.selected) .hold-box { border-color: transparent !important; background-color: transparent !important; }
+        .canvas-container.hide-labels .hold-group:not(.selected) .hold-label { display: none !important; }
+        .canvas-container.show-confidence .hold-label::after { content: " " attr(data-conf); font-size: 0.8em; opacity: 0.8; }
+        .canvas-container.show-hidden-visible .hold-group.hidden:not(.selected) { display: block !important; opacity: 0.3 !important; }
+
+/* --- Viewport Controls --- */
         .viewport-controls {
             position: absolute;
             bottom: 20px;
@@ -461,12 +487,46 @@
 
         <!-- Inspector -->
         <div class="inspector-panel">
-            <div class="inspector-header">
-                <h2>Hold Inspector</h2>
+            <div class="inspector-tabs">
+                <button class="tab-btn active" data-tab="list">List</button>
+                <button class="tab-btn" data-tab="details">Selected</button>
+                <button class="tab-btn" data-tab="view">View</button>
             </div>
-            <div class="inspector-body" id="inspector-body">
-                <div class="empty-state">
-                    Select a hold on the wall to view its details.
+            
+            <div class="tab-content active" id="tab-list">
+                <div style="padding: 1rem; border-bottom: 1px solid var(--border-color); flex-shrink: 0;">
+                    <input type="text" id="hold-search" class="form-control" placeholder="Search holds..." style="margin-bottom: 0.5rem; padding: 0.5rem;">
+                    <div style="display: flex; gap: 0.75rem; flex-wrap: wrap;">
+                        <label style="font-size: 0.8rem; display: flex; align-items: center; gap: 0.25rem;"><input type="checkbox" id="filter-manual" checked> Manual</label>
+                        <label style="font-size: 0.8rem; display: flex; align-items: center; gap: 0.25rem;"><input type="checkbox" id="filter-model" checked> Model</label>
+                        <label style="font-size: 0.8rem; display: flex; align-items: center; gap: 0.25rem;"><input type="checkbox" id="filter-hidden"> Hidden</label>
+                    </div>
+                </div>
+                <div class="hold-list-container" id="hold-list-container">
+                    <!-- List items go here -->
+                </div>
+            </div>
+
+            <div class="tab-content" id="tab-details">
+                <div class="inspector-body" id="inspector-body" style="overflow-y: auto;">
+                    <div class="empty-state">Select a hold on the wall to view its details.</div>
+                </div>
+            </div>
+
+            <div class="tab-content" id="tab-view" style="padding: 1.5rem; overflow-y: auto;">
+                <div class="form-group">
+                    <label>Display Mode</label>
+                    <select id="display-mode-select" class="form-control">
+                        <option value="overview">Overview (Less Clutter)</option>
+                        <option value="edit">Edit (Focus Selected)</option>
+                    </select>
+                </div>
+                <div class="form-group" style="margin-top: 2rem;">
+                    <label>Debug Toggles</label>
+                    <div class="checkbox-group" style="margin-top: 0.5rem;"><input type="checkbox" id="toggle-boxes" checked> <label style="margin:0; text-transform:none;">Show Boxes</label></div>
+                    <div class="checkbox-group"><input type="checkbox" id="toggle-labels" checked> <label style="margin:0; text-transform:none;">Show Labels</label></div>
+                    <div class="checkbox-group"><input type="checkbox" id="toggle-confidence"> <label style="margin:0; text-transform:none;">Show Confidence text</label></div>
+                    <div class="checkbox-group"><input type="checkbox" id="toggle-hidden-visible"> <label style="margin:0; text-transform:none;">Show Hidden Holds</label></div>
                 </div>
             </div>
         </div>
@@ -476,24 +536,36 @@
         // --- State Model ---
         const state = {
             currentWall: null,
-            wallHolds: [],             // Array of hold objects
-            selectedHoldId: null,      // UUID string
+            wallHolds: [],             
+            selectedHoldId: null,      
             
-            // Viewport State
             scale: 1,
             translateX: 0,
             translateY: 0,
             
-            // Image Dimensions (Source of truth for coordinates)
             imageNaturalWidth: 0,
             imageNaturalHeight: 0,
 
-            // Interaction State
             isAddingHold: false,
             addStartX: 0,
             addStartY: 0,
             
-            dragState: null // For label dragging
+            dragState: null,
+            
+            // UI View & Filter State
+            viewOptions: {
+                mode: 'overview',
+                showBoxes: true,
+                showLabels: true,
+                showConfidence: false,
+                showHiddenVisible: false
+            },
+            listFilters: {
+                search: '',
+                manual: true,
+                model: true,
+                hidden: false
+            }
         };
 
         // --- DOM Elements ---
@@ -510,6 +582,119 @@
         
         const opacitySlider = document.getElementById('opacity-slider');
         const inspectorBody = document.getElementById('inspector-body');
+
+        // New UI Elements
+        const holdListContainer = document.getElementById('hold-list-container');
+        const holdSearch = document.getElementById('hold-search');
+        const filterManual = document.getElementById('filter-manual');
+        const filterModel = document.getElementById('filter-model');
+        const filterHidden = document.getElementById('filter-hidden');
+        
+        const displayModeSelect = document.getElementById('display-mode-select');
+        const toggleBoxes = document.getElementById('toggle-boxes');
+        const toggleLabels = document.getElementById('toggle-labels');
+        const toggleConfidence = document.getElementById('toggle-confidence');
+        const toggleHiddenVisible = document.getElementById('toggle-hidden-visible');
+
+        // Tab logic
+        document.querySelectorAll('.tab-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+                document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+                btn.classList.add('active');
+                document.getElementById('tab-' + btn.dataset.tab).classList.add('active');
+                
+                // If switching to list, scroll selected into view if needed
+                if (btn.dataset.tab === 'list' && state.selectedHoldId) {
+                    const selectedEl = document.querySelector(`.hold-list-item[data-id="${state.selectedHoldId}"]`);
+                    if (selectedEl) selectedEl.scrollIntoView({ block: 'nearest' });
+                }
+            });
+        });
+
+        // Filter bindings
+        holdSearch.addEventListener('input', (e) => { state.listFilters.search = e.target.value.toLowerCase(); renderList(); });
+        filterManual.addEventListener('change', (e) => { state.listFilters.manual = e.target.checked; renderList(); });
+        filterModel.addEventListener('change', (e) => { state.listFilters.model = e.target.checked; renderList(); });
+        filterHidden.addEventListener('change', (e) => { state.listFilters.hidden = e.target.checked; renderList(); });
+
+        // View bindings
+        displayModeSelect.addEventListener('change', (e) => { state.viewOptions.mode = e.target.value; applyViewSettings(); });
+        toggleBoxes.addEventListener('change', (e) => { state.viewOptions.showBoxes = e.target.checked; applyViewSettings(); });
+        toggleLabels.addEventListener('change', (e) => { state.viewOptions.showLabels = e.target.checked; applyViewSettings(); });
+        toggleConfidence.addEventListener('change', (e) => { state.viewOptions.showConfidence = e.target.checked; applyViewSettings(); });
+        toggleHiddenVisible.addEventListener('change', (e) => { state.viewOptions.showHiddenVisible = e.target.checked; applyViewSettings(); });
+
+        function applyViewSettings() {
+            canvasContainer.classList.remove('mode-overview', 'mode-edit');
+            canvasContainer.classList.add('mode-' + state.viewOptions.mode);
+            
+            canvasContainer.classList.toggle('hide-boxes', !state.viewOptions.showBoxes);
+            canvasContainer.classList.toggle('hide-labels', !state.viewOptions.showLabels);
+            canvasContainer.classList.toggle('show-confidence', state.viewOptions.showConfidence);
+            canvasContainer.classList.toggle('show-hidden-visible', state.viewOptions.showHiddenVisible);
+        }
+
+        // Apply initial settings
+        applyViewSettings();
+
+        // Render List
+        function renderList() {
+            holdListContainer.innerHTML = '';
+            const frag = document.createDocumentFragment();
+            let count = 0;
+
+            state.wallHolds.forEach(hold => {
+                // Apply filters
+                if (!state.listFilters.hidden && hold.is_hidden) return;
+                if (!state.listFilters.manual && hold.source_type === 'manual') return;
+                if (!state.listFilters.model && hold.source_type !== 'manual') return;
+                if (state.listFilters.search) {
+                    const searchStr = `${hold.class_name || ''} ${hold.label_text || ''}`.toLowerCase();
+                    if (!searchStr.includes(state.listFilters.search)) return;
+                }
+
+                count++;
+                const item = document.createElement('div');
+                item.className = 'hold-list-item';
+                if (hold.id === state.selectedHoldId) item.classList.add('selected');
+                if (hold.is_hidden) item.classList.add('hidden-item');
+                item.dataset.id = hold.id;
+
+                const nameWrap = document.createElement('div');
+                const nameStr = hold.label_text ? `${hold.class_name} "${hold.label_text}"` : (hold.class_name || 'hold');
+                nameWrap.innerHTML = `<strong>${nameStr}</strong><br><span style="font-size: 0.75rem; color: #64748b;">${hold.source_type === 'manual' ? 'Manual' : (hold.confidence !== null ? (hold.confidence*100).toFixed(1)+'%' : '')}</span>`;
+                
+                item.appendChild(nameWrap);
+                
+                item.addEventListener('click', () => {
+                    selectHold(hold.id);
+                    // auto switch to details tab
+                    document.querySelector('.tab-btn[data-tab="details"]').click();
+                    
+                    // Pan to hold if offscreen (center it)
+                    const holdCenterX = hold.x1 + (hold.x2 - hold.x1)/2;
+                    const holdCenterY = hold.y1 + (hold.y2 - hold.y1)/2;
+                    
+                    const vw = viewport.clientWidth;
+                    const vh = viewport.clientHeight;
+                    
+                    // target transform: center of viewport maps to holdCenter
+                    state.translateX = vw/2 - (holdCenterX * state.scale);
+                    state.translateY = vh/2 - (holdCenterY * state.scale);
+                    updateTransform(true);
+                });
+
+                frag.appendChild(item);
+            });
+
+            if (count === 0) {
+                holdListContainer.innerHTML = '<div class="empty-state" style="margin-top:2rem;">No holds match filters.</div>';
+            } else {
+                holdListContainer.appendChild(frag);
+            }
+        }
+
 
         // Extract Wall ID from URL: /bbro/walls/{wall_id}/edit
         const cleanPath = window.location.pathname.replace(/\/$/, '');
@@ -671,6 +856,7 @@
                 console.log("holds", state.wallHolds);
                 
                 renderHolds();
+                renderList();
             } catch (err) {
                 console.error(err);
                 alert("Error loading holds: " + err.message);
@@ -717,6 +903,11 @@
                 const label = document.createElement('div');
                 label.className = 'hold-label';
                 label.textContent = hold.class_name || 'hold';
+                if (hold.confidence !== null) {
+                    label.setAttribute('data-conf', (Math.round(hold.confidence * 100)) + '%');
+                } else {
+                    label.setAttribute('data-conf', 'M');
+                }
                 
                 // If label has custom position, apply it
                 // Custom positions are stored as absolute image coordinates,
@@ -837,6 +1028,13 @@
             }
 
             renderInspector();
+            
+            // update list highlights
+            document.querySelectorAll('.hold-list-item').forEach(el => el.classList.remove('selected'));
+            if (holdId) {
+                const listItem = document.querySelector(`.hold-list-item[data-id="${holdId}"]`);
+                if (listItem) listItem.classList.add('selected');
+            }
         }
 
         function renderInspector() {
