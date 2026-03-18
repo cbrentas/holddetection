@@ -16,6 +16,8 @@ import os
 
 from fastapi import APIRouter
 
+from app.schemas import WallUpdate, WallHoldCreate, WallHoldUpdate
+
 app = FastAPI(title="Hold Detection API")
 api_router = APIRouter(prefix="/bbro/api")
 
@@ -258,5 +260,120 @@ def get_job_wall(job_id: str, db: Session = Depends(get_db), username: str = Dep
         "preview_image_uri": wall.preview_image_uri,
         "original_image_uri": wall.original_image_uri,
     }
+
+@api_router.get("/walls/{wall_id}/image")
+def get_wall_image(wall_id: str, db: Session = Depends(get_db), username: str = Depends(basic_auth)):
+    wall = db.query(Wall).filter(Wall.id == wall_id).first()
+    if not wall:
+        raise HTTPException(status_code=404, detail="Wall not found")
+        
+    local_path = storage.resolve_uri(wall.original_image_uri)
+    if not Path(local_path).exists():
+        raise HTTPException(status_code=404, detail="Original image missing on disk")
+
+    return FileResponse(local_path)
+
+@api_router.get("/walls/{wall_id}/preview")
+def get_wall_preview(wall_id: str, db: Session = Depends(get_db), username: str = Depends(basic_auth)):
+    wall = db.query(Wall).filter(Wall.id == wall_id).first()
+    if not wall:
+        raise HTTPException(status_code=404, detail="Wall not found")
+        
+    if not wall.preview_image_uri:
+        raise HTTPException(status_code=404, detail="Preview image not available")
+
+    local_path = storage.resolve_uri(wall.preview_image_uri)
+    if not Path(local_path).exists():
+        raise HTTPException(status_code=404, detail="Preview image missing on disk")
+
+    return FileResponse(local_path)
+
+@api_router.patch("/walls/{wall_id}")
+def update_wall(wall_id: str, data: WallUpdate, db: Session = Depends(get_db), username: str = Depends(basic_auth)):
+    wall = db.query(Wall).filter(Wall.id == wall_id).first()
+    if not wall:
+        raise HTTPException(status_code=404, detail="Wall not found")
+
+    if data.title is not None:
+        wall.title = data.title
+    if data.meta is not None:
+        wall.meta = data.meta
+
+    db.commit()
+    db.refresh(wall)
+    return {"status": "success", "id": str(wall.id)}
+
+@api_router.post("/walls/{wall_id}/holds")
+def create_wall_hold(wall_id: str, data: WallHoldCreate, db: Session = Depends(get_db), username: str = Depends(basic_auth)):
+    wall = db.query(Wall).filter(Wall.id == wall_id).first()
+    if not wall:
+        raise HTTPException(status_code=404, detail="Wall not found")
+
+    center_x = (data.x1 + data.x2) / 2.0
+    center_y = (data.y1 + data.y2) / 2.0
+
+    hold = WallHold(
+        wall_id=wall.id,
+        prediction_id=None,
+        source_type="manual",
+        class_name=data.class_name,
+        confidence=None,
+        x1=data.x1,
+        y1=data.y1,
+        x2=data.x2,
+        y2=data.y2,
+        center_x=center_x,
+        center_y=center_y,
+        geometry=data.geometry,
+        label_text=data.label_text,
+        label_x=data.label_x,
+        label_y=data.label_y,
+        is_hidden=data.is_hidden,
+        is_user_adjusted=True
+    )
+    db.add(hold)
+    db.commit()
+    db.refresh(hold)
+    
+    return {"status": "success", "id": str(hold.id)}
+
+@api_router.patch("/walls/{wall_id}/holds/{hold_id}")
+def update_wall_hold(wall_id: str, hold_id: str, data: WallHoldUpdate, db: Session = Depends(get_db), username: str = Depends(basic_auth)):
+    hold = db.query(WallHold).filter(WallHold.id == hold_id, WallHold.wall_id == wall_id).first()
+    if not hold:
+        raise HTTPException(status_code=404, detail="Hold not found")
+
+    update_data = data.dict(exclude_unset=True)
+    for key, value in update_data.items():
+        setattr(hold, key, value)
+
+    # Recompute centers if bbox changed
+    if any(k in update_data for k in ('x1', 'y1', 'x2', 'y2')):
+        if hold.x1 >= hold.x2:
+            raise HTTPException(status_code=400, detail="x2 must be strictly greater than x1")
+        if hold.y1 >= hold.y2:
+            raise HTTPException(status_code=400, detail="y2 must be strictly greater than y1")
+
+        hold.center_x = (hold.x1 + hold.x2) / 2.0
+        hold.center_y = (hold.y1 + hold.y2) / 2.0
+
+    hold.is_user_adjusted = True
+    db.commit()
+    db.refresh(hold)
+    
+    return {"status": "success", "id": str(hold.id)}
+
+@api_router.delete("/walls/{wall_id}/holds/{hold_id}")
+def delete_wall_hold(wall_id: str, hold_id: str, db: Session = Depends(get_db), username: str = Depends(basic_auth)):
+    hold = db.query(WallHold).filter(WallHold.id == hold_id, WallHold.wall_id == wall_id).first()
+    if not hold:
+        raise HTTPException(status_code=404, detail="Hold not found")
+
+    if hold.source_type != "manual":
+        raise HTTPException(status_code=400, detail="Model-derived holds cannot be deleted. Use is_hidden instead.")
+
+    db.delete(hold)
+    db.commit()
+    return {"status": "success"}
 
 app.include_router(api_router)
