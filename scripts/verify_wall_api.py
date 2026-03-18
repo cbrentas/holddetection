@@ -93,7 +93,93 @@ def run():
             print(f"ERROR: Job wall id mismatch. Expected {wall_id}, got {job_wall['id']}")
     else:
         print("\nSkipping GET /bbro/api/jobs/{job_id}/wall as wall has no latest_job_id")
+
+    # 5. Image Endpoints
+    print(f"\n[ GET /bbro/api/walls/{wall_id}/image ]")
+    resp = client.get(f"/bbro/api/walls/{wall_id}/image", auth=auth)
+    if resp.status_code == 200:
+        print("Success. Retrieved original wall image.")
+    else:
+        print(f"ERROR: Failed to retrieve image, status {resp.status_code}")
         
+    print(f"\n[ GET /bbro/api/walls/{wall_id}/preview ]")
+    resp = client.get(f"/bbro/api/walls/{wall_id}/preview", auth=auth)
+    if resp.status_code == 200:
+        print("Success. Retrieved preview wall image.")
+    elif resp.status_code == 404:
+        print("Success. Not found (expected if no preview generated yet).")
+    else:
+        print(f"ERROR: Unexpected status {resp.status_code}")
+
+    # 6. Update Wall metadata
+    print(f"\n[ PATCH /bbro/api/walls/{wall_id} ]")
+    patch_payload = {"title": "Updated Test Wall Title"}
+    resp = client.patch(f"/bbro/api/walls/{wall_id}", json=patch_payload, auth=auth)
+    if resp.status_code != 200:
+        print(f"ERROR: Expected 200, got {resp.status_code}")
+        print(resp.text)
+    else:
+        print("Success. Wall title updated.")
+
+    # 7. Create Manual Hold
+    print(f"\n[ POST /bbro/api/walls/{wall_id}/holds ]")
+    hold_payload = {
+        "class_name": "manual_hold",
+        "x1": 10.0,
+        "y1": 10.0,
+        "x2": 50.0,
+        "y2": 50.0,
+        "label_text": "Test Manual Hold"
+    }
+    resp = client.post(f"/bbro/api/walls/{wall_id}/holds", json=hold_payload, auth=auth)
+    if resp.status_code != 200:
+        print(f"ERROR: Expected 200, got {resp.status_code}")
+        print(resp.text)
+        new_hold_id = None
+    else:
+        print("Success. Manual hold created.")
+        new_hold_id = resp.json().get("id")
+
+    if new_hold_id:
+        # 8. Update Manual Hold
+        print(f"\n[ PATCH /bbro/api/walls/{wall_id}/holds/{new_hold_id} ]")
+        update_hold_payload = {
+            "is_hidden": True,
+            "x2": 60.0
+        }
+        resp = client.patch(f"/bbro/api/walls/{wall_id}/holds/{new_hold_id}", json=update_hold_payload, auth=auth)
+        if resp.status_code != 200:
+            print(f"ERROR: Expected 200, got {resp.status_code}")
+            print(resp.text)
+        else:
+            print("Success. Manual hold updated.")
+
+        # 9. Delete Manual Hold
+        print(f"\n[ DELETE /bbro/api/walls/{wall_id}/holds/{new_hold_id} ]")
+        resp = client.delete(f"/bbro/api/walls/{wall_id}/holds/{new_hold_id}", auth=auth)
+        if resp.status_code != 200:
+            print(f"ERROR: Expected 200, got {resp.status_code}")
+            print(resp.text)
+        else:
+            print("Success. Manual hold deleted.")
+
+    # 10. Attempt to delete model-derived hold (should fail)
+    model_hold_id = None
+    for hold in holds:
+        if hold.get('source_type') == 'model':
+            model_hold_id = hold.get('id')
+            break
+            
+    if model_hold_id:
+        print(f"\n[ DELETE /bbro/api/walls/{wall_id}/holds/{model_hold_id} ] (Model hold)")
+        resp = client.delete(f"/bbro/api/walls/{wall_id}/holds/{model_hold_id}", auth=auth)
+        if resp.status_code == 400:
+            print("Success. Properly prevented deletion of model-derived hold.")
+        else:
+            print(f"ERROR: Expected 400, got {resp.status_code}")
+    else:
+        print("\nSkipping delete model-derived hold test (no model holds found).")
+
     print("\nAll API tests completed.")
 
 if __name__ == "__main__":
