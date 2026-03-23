@@ -30,12 +30,27 @@ persistent wall API exposed
 interactive wall editor UI
 ```
 
+## Core Product Model
+
+The platform treats holds and routes with a specific set of rules to accommodate dense spray walls:
+
+- **Wall**: A persistent object representing a physical climbing wall. Rarely changes.
+- **WallHold**: Editable representation of holds on a wall. Derived initially from ML predictions, then user-corrected. This is the source of truth for geometry.
+- **Route**: A lightweight, user-defined selection of `wall_holds`. Frequently created, edited, and deleted.
+- **RouteHold**: A relation linking a route to `wall_holds`. Does NOT duplicate geometry.
+
+**Key Rule**:
+- **Predictions** = immutable ML output
+- **WallHolds** = editable geometry layer
+- **Routes** = relational overlay on top of `wall_holds`
+
 ## Components
 
 The system is composed of several distinct and loosely coupled components:
 
 - **FastAPI backend**: API gateway serving routes and managing the UI.
 - **Wall API**: Read-only and editor REST endpoints exposing generated walls and wall holds.
+- **Route API**: REST endpoints for managing routes (`/bbro/api/walls/{wall_id}/routes`, `/bbro/api/routes/{route_id}`, etc.).
 - **Wall Editor UI**: A lightweight, vanilla JS frontend for interactively modifying, hiding, or manually adding bounding boxes on dense spray walls.
 - **Async inference worker**: Continuous background process running ML models.
 - **PostgreSQL database**: Stores metadata for models, datasets, jobs, walls, and predictions.
