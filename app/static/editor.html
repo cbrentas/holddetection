@@ -426,6 +426,55 @@
             width: 100%; font-weight: 500;
         }
 
+        /* --- Route Mode --- */
+        body.route-mode-active .editor-layout {
+            border: 4px solid var(--primary);
+            box-sizing: border-box;
+        }
+        
+        .route-mode-banner {
+            display: none;
+            background: var(--primary);
+            color: white;
+            text-align: center;
+            padding: 0.5rem;
+            font-weight: bold;
+            font-size: 0.9rem;
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            z-index: 1000;
+            pointer-events: none;
+        }
+        
+        body.route-mode-active .route-mode-banner {
+            display: block;
+        }
+
+        .hold-group.route-member .hold-box {
+            border-color: #a855f7 !important; /* purple */
+            background-color: rgba(168, 85, 247, 0.3) !important;
+            border-width: 3px !important;
+            opacity: 1 !important;
+            box-shadow: 0 0 10px #a855f7;
+        }
+        
+        .hold-group.route-member .hold-label {
+            background: #a855f7 !important;
+            color: white !important;
+            opacity: 1 !important;
+        }
+
+        .route-hold-item {
+            display: flex; gap: 0.5rem; align-items: center; padding: 0.5rem;
+            background: rgba(255,255,255,0.05); margin-bottom: 0.5rem; border-radius: 0.25rem;
+        }
+        .route-hold-item input, .route-hold-item select {
+            background: rgba(0,0,0,0.2); border: 1px solid var(--border-color); color: white;
+            padding: 0.25rem; font-size: 0.8rem; border-radius: 0.25rem;
+        }
+
     </style>
 </head>
 <body>
@@ -462,6 +511,7 @@
     <div class="editor-layout">
         <!-- Viewport -->
         <div class="main-viewport" id="viewport">
+            <div class="route-mode-banner">ROUTE EDITING MODE ACTIVE</div>
             <div class="canvas-container" id="canvas-container">
                 <img id="wall-image" src="" alt="Original Wall">
                 <div id="holds-layer"></div>
@@ -490,6 +540,7 @@
             <div class="inspector-tabs">
                 <button class="tab-btn active" data-tab="list">List</button>
                 <button class="tab-btn" data-tab="details">Selected</button>
+                <button class="tab-btn" data-tab="routes">Routes</button>
                 <button class="tab-btn" data-tab="view">View</button>
             </div>
             
@@ -510,6 +561,21 @@
             <div class="tab-content" id="tab-details">
                 <div class="inspector-body" id="inspector-body" style="overflow-y: auto;">
                     <div class="empty-state">Select a hold on the wall to view its details.</div>
+                </div>
+            </div>
+
+            <div class="tab-content" id="tab-routes" style="flex-direction: column; overflow: hidden;">
+                <div class="inspector-header" style="padding: 1rem; border-bottom: 1px solid var(--border-color); flex-shrink: 0;">
+                    <button id="btn-create-route" class="primary-btn" style="padding: 0.5rem; font-size: 0.85rem;">+ New Route</button>
+                    <div class="form-group" style="margin-top: 1rem; margin-bottom: 0;">
+                        <select id="route-select" class="form-control" style="padding: 0.5rem;">
+                            <option value="">-- Select a Route --</option>
+                        </select>
+                    </div>
+                </div>
+                
+                <div id="route-inspector-body" style="padding: 1rem; overflow-y: auto; flex: 1;">
+                    <div class="empty-state">Select or create a route.</div>
                 </div>
             </div>
 
@@ -538,6 +604,10 @@
             currentWall: null,
             wallHolds: [],             
             selectedHoldId: null,      
+            
+            routes: [],
+            activeRouteId: null,
+            isRouteMode: false,
             
             scale: 1,
             translateX: 0,
@@ -838,6 +908,7 @@
                     
                     resetViewport(); // Fit image to viewport
                     loadHolds();     // Load holds after image is ready
+                    loadRoutes();
                 };
                 wallImage.src = URL.createObjectURL(blob);
                 
@@ -888,6 +959,13 @@
                 if (hold.id === state.selectedHoldId) group.classList.add('selected');
                 if (hold.is_hidden) group.classList.add('hidden');
                 
+                if (state.activeRouteId) {
+                    const r = state.routes.find(route => route.id === state.activeRouteId);
+                    if (r && r.holds && r.holds.find(rh => rh.wall_hold_id === hold.id)) {
+                        group.classList.add('route-member');
+                    }
+                }
+                
                 group.dataset.id = hold.id;
                 group.style.left = `${leftPct}%`;
                 group.style.top = `${topPct}%`;
@@ -932,6 +1010,7 @@
                 // Escape key should cancel and restore original position
                 label.addEventListener('mousedown', (e) => {
                     e.stopPropagation(); 
+                    if (state.isRouteMode) return;
                     if (state.dragState || state.isAddingHold) return;
                     selectHold(hold.id);
                     state.dragState = {
@@ -954,6 +1033,15 @@
                     // Prevent viewport drag from starting
                     e.stopPropagation(); 
                     if (state.dragState || state.isAddingHold) return;
+
+                    if (state.isRouteMode) {
+                        if (!state.activeRouteId) {
+                            alert("Please select a route first");
+                            return;
+                        }
+                        toggleRouteHold(hold.id);
+                        return;
+                    }
                     
                     if (state.selectedHoldId !== hold.id) {
                         selectHold(hold.id);
@@ -986,6 +1074,7 @@
                         handle.className = `resize-handle ${corner}`;
                         handle.addEventListener('mousedown', (e) => {
                             e.stopPropagation();
+                            if (state.isRouteMode) return;
                             if (state.dragState || state.isAddingHold) return;
                             state.dragState = {
                                 type: 'hold-resize',
@@ -1472,6 +1561,299 @@
 
         // Start
         checkAuthAndInit();
+
+
+        // --- Routes Implementation ---
+        const routeSelect = document.getElementById('route-select');
+        const routeInspectorBody = document.getElementById('route-inspector-body');
+        const btnCreateRoute = document.getElementById('btn-create-route');
+
+        async function loadRoutes() {
+            try {
+                const res = await fetch(`/bbro/api/walls/${wallId}/routes`, { headers: getAuthHeaders() });
+                if (!res.ok) throw new Error("Failed to load routes");
+                state.routes = await res.json();
+                
+                // For each route, fetch its full details (which includes holds)
+                for (let i=0; i<state.routes.length; i++) {
+                    const rRes = await fetch(`/bbro/api/routes/${state.routes[i].id}`, { headers: getAuthHeaders() });
+                    if (rRes.ok) {
+                        const rDetails = await rRes.json();
+                        state.routes[i] = rDetails; // replaced with full details which has holds array
+                    }
+                }
+                
+                renderRouteSelect();
+                renderRouteInspector();
+                renderHolds(); // update visuals just in case route membership changed
+            } catch (err) {
+                console.error("loadRoutes error:", err);
+            }
+        }
+
+        function renderRouteSelect() {
+            const currentVal = routeSelect.value;
+            routeSelect.innerHTML = '<option value="">-- Select a Route --</option>';
+            state.routes.forEach(r => {
+                const opt = document.createElement('option');
+                opt.value = r.id;
+                opt.textContent = `${r.name || 'Unnamed'} (${r.difficulty || 'Unrated'})`;
+                routeSelect.appendChild(opt);
+            });
+            if (state.activeRouteId) {
+                routeSelect.value = state.activeRouteId;
+            }
+        }
+        
+        routeSelect.addEventListener('change', (e) => {
+            state.activeRouteId = e.target.value || null;
+            if (!state.activeRouteId) {
+                state.isRouteMode = false;
+                document.body.classList.remove('route-mode-active');
+            }
+            renderRouteInspector();
+            renderHolds();
+        });
+
+        btnCreateRoute.addEventListener('click', async () => {
+            const name = prompt("Route Name", "New Route");
+            if (!name) return;
+            const difficulty = prompt("Route Difficulty", "V0");
+            
+            try {
+                const res = await fetch(`/bbro/api/walls/${wallId}/routes`, {
+                    method: 'POST',
+                    headers: { ...getAuthHeaders(), 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ name, difficulty, description: "", created_by: localStorage.getItem('hd_username') })
+                });
+                if (!res.ok) throw new Error("Failed to create route");
+                const newRoute = await res.json();
+                newRoute.holds = [];
+                state.routes.unshift(newRoute);
+                state.activeRouteId = newRoute.id;
+                
+                renderRouteSelect();
+                renderRouteInspector();
+                renderHolds();
+            } catch (err) {
+                console.error(err);
+                alert("Error creating route");
+            }
+        });
+
+        function renderRouteInspector() {
+            if (!state.activeRouteId) {
+                routeInspectorBody.innerHTML = '<div class="empty-state">Select or create a route.</div>';
+                return;
+            }
+            
+            const route = state.routes.find(r => r.id === state.activeRouteId);
+            if (!route) return;
+            
+            let holdsHtml = '';
+            const routeHolds = route.holds || [];
+            
+            if (routeHolds.length === 0) {
+                holdsHtml = '<div class="empty-state" style="margin-top:0;">No holds added yet.</div>';
+            } else {
+                routeHolds.forEach(rh => {
+                    const wh = state.wallHolds.find(w => w.id === rh.wall_hold_id);
+                    const holdName = wh ? (wh.label_text ? `${wh.class_name} "${wh.label_text}"` : wh.class_name) : rh.wall_hold_id;
+                    
+                    holdsHtml += `
+                    <div class="route-hold-item" data-rh-id="${rh.route_hold_id}">
+                        <div style="flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="${holdName}">${holdName}</div>
+                        <select class="rh-role" style="width: 80px;" title="Role">
+                            <option value="Foot" ${rh.role === 'Foot' ? 'selected' : ''}>Foot</option>
+                            <option value="Hand" ${rh.role === 'Hand' ? 'selected' : ''}>Hand</option>
+                            <option value="Start" ${rh.role === 'Start' ? 'selected' : ''}>Start</option>
+                            <option value="Finish" ${rh.role === 'Finish' ? 'selected' : ''}>Finish</option>
+                            <option value="Volume" ${rh.role === 'Volume' ? 'selected' : ''}>Volume</option>
+                        </select>
+                        <input type="number" class="rh-order" style="width: 50px;" value="${rh.order_index !== null ? rh.order_index : ''}" placeholder="Ord" title="Order Index">
+                        <button class="btn-remove-rh" style="background: none; border: none; color: #ef4444; cursor: pointer; font-weight: bold;">×</button>
+                    </div>`;
+                });
+            }
+
+            routeInspectorBody.innerHTML = `
+                <div class="form-group" style="margin-bottom: 1rem; border: 1px solid var(--border-color); background: rgba(0,0,0,0.2); padding: 1rem; border-radius: 0.5rem;">
+                    <label style="display: flex; align-items: center; gap: 0.5rem; color: white;">
+                        <input type="checkbox" id="chk-route-mode" ${state.isRouteMode ? 'checked' : ''} style="width: 1.2rem; height: 1.2rem;"> 
+                        <strong>Route Editing Mode</strong>
+                    </label>
+                    <p style="font-size: 0.75rem; color: #94a3b8; margin: 0.5rem 0 0 0;">
+                        When ON, clicking holds on the wall toggles them in this route. Wall interactions (move/resize) are disabled.
+                    </p>
+                </div>
+
+                <div class="form-group">
+                    <label>Route Name</label>
+                    <input type="text" class="form-control" id="rt-name" value="${route.name || ''}">
+                </div>
+                
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Difficulty</label>
+                        <input type="text" class="form-control" id="rt-difficulty" value="${route.difficulty || ''}">
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label>Description</label>
+                    <textarea class="form-control" id="rt-description" rows="3">${route.description || ''}</textarea>
+                </div>
+
+                <div style="margin-top: 1.5rem; margin-bottom: 0.5rem; font-weight: bold; font-size: 0.85rem; text-transform: uppercase;">
+                    Route Holds (${routeHolds.length})
+                </div>
+                ${holdsHtml}
+
+                <div style="margin-top: 2rem;">
+                    <button id="btn-delete-route" style="width: 100%; padding: 0.75rem; background: rgba(239, 68, 68, 0.2); border: 1px solid #ef4444; color: #fca5a5; border-radius: 0.5rem; cursor: pointer; font-weight: bold; transition: all 0.2s;">
+                        Delete Route
+                    </button>
+                </div>
+            `;
+
+            // Bind events
+            document.getElementById('chk-route-mode').addEventListener('change', (e) => {
+                state.isRouteMode = e.target.checked;
+                if (state.isRouteMode) {
+                    document.body.classList.add('route-mode-active');
+                    canvasContainer.classList.remove('is-editing');
+                    selectHold(null); // deselect any wall hold to clear UI clutter
+                } else {
+                    document.body.classList.remove('route-mode-active');
+                }
+                renderHolds();
+            });
+
+            const saveRouteMeta = async (payload) => {
+                try {
+                    await fetch(`/bbro/api/routes/${route.id}`, {
+                        method: 'PATCH',
+                        headers: { ...getAuthHeaders(), 'Content-Type': 'application/json' },
+                        body: JSON.stringify(payload)
+                    });
+                    Object.assign(route, payload);
+                    renderRouteSelect();
+                } catch(e) { console.error(e); }
+            };
+
+            document.getElementById('rt-name').addEventListener('change', e => saveRouteMeta({name: e.target.value}));
+            document.getElementById('rt-difficulty').addEventListener('change', e => saveRouteMeta({difficulty: e.target.value}));
+            document.getElementById('rt-description').addEventListener('change', e => saveRouteMeta({description: e.target.value}));
+            
+            document.getElementById('btn-delete-route').addEventListener('click', async () => {
+                if (!confirm("Delete this route?")) return;
+                try {
+                    await fetch(`/bbro/api/routes/${route.id}`, { method: 'DELETE', headers: getAuthHeaders() });
+                    state.routes = state.routes.filter(r => r.id !== route.id);
+                    state.activeRouteId = null;
+                    state.isRouteMode = false;
+                    document.body.classList.remove('route-mode-active');
+                    renderRouteSelect();
+                    renderRouteInspector();
+                    renderHolds();
+                } catch (e) {
+                    console.error(e);
+                    alert("Error deleting route.");
+                }
+            });
+
+            // Bind events for route holds (Update & Remove)
+            document.querySelectorAll('.route-hold-item').forEach(el => {
+                const rhId = el.dataset.rhId;
+                const roleSel = el.querySelector('.rh-role');
+                const ordInp = el.querySelector('.rh-order');
+                const rmBtn = el.querySelector('.btn-remove-rh');
+
+                roleSel.addEventListener('change', e => updateRouteHold(route.id, rhId, { role: e.target.value }));
+                ordInp.addEventListener('change', e => {
+                    const val = e.target.value ? parseInt(e.target.value, 10) : null;
+                    updateRouteHold(route.id, rhId, { order_index: val });
+                });
+                rmBtn.addEventListener('click', () => removeHoldFromRoute(route.id, rhId));
+            });
+        }
+
+        async function toggleRouteHold(wallHoldId) {
+            if (!state.activeRouteId) return;
+            const route = state.routes.find(r => r.id === state.activeRouteId);
+            if (!route) return;
+
+            const existing = (route.holds || []).find(rh => rh.wall_hold_id === wallHoldId);
+            if (existing) {
+                await removeHoldFromRoute(route.id, existing.route_hold_id);
+            } else {
+                await addHoldToRoute(route.id, wallHoldId);
+            }
+        }
+
+        async function addHoldToRoute(routeId, wallHoldId) {
+            try {
+                const res = await fetch(`/bbro/api/routes/${routeId}/holds`, {
+                    method: 'POST',
+                    headers: { ...getAuthHeaders(), 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ wall_hold_id: wallHoldId, role: 'Hand', order_index: null })
+                });
+                if (!res.ok) {
+                    const errPayload = await res.json();
+                    throw new Error(errPayload.detail || "Failed to add hold");
+                }
+                await reloadActiveRoute(routeId);
+            } catch (err) {
+                console.error(err);
+                alert("Could not add hold: " + err.message);
+            }
+        }
+
+        async function removeHoldFromRoute(routeId, routeHoldId) {
+            try {
+                const res = await fetch(`/bbro/api/routes/${routeId}/holds/${routeHoldId}`, {
+                    method: 'DELETE',
+                    headers: getAuthHeaders()
+                });
+                if (!res.ok) throw new Error("Failed to remove hold");
+                await reloadActiveRoute(routeId);
+            } catch (err) {
+                console.error(err);
+            }
+        }
+
+        async function updateRouteHold(routeId, routeHoldId, payload) {
+            try {
+                const res = await fetch(`/bbro/api/routes/${routeId}/holds/${routeHoldId}`, {
+                    method: 'PATCH',
+                    headers: { ...getAuthHeaders(), 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                if (!res.ok) throw new Error("Failed to update hold");
+                await reloadActiveRoute(routeId);
+            } catch (err) {
+                console.error(err);
+            }
+        }
+
+        async function reloadActiveRoute(routeId) {
+            try {
+                const res = await fetch(`/bbro/api/routes/${routeId}`, { headers: getAuthHeaders() });
+                if (res.ok) {
+                    const fullRoute = await res.json();
+                    const idx = state.routes.findIndex(r => r.id === routeId);
+                    if (idx > -1) {
+                        state.routes[idx] = fullRoute;
+                        if (state.activeRouteId === routeId) {
+                            renderRouteInspector();
+                            renderHolds(); // re-render visual indications
+                        }
+                    }
+                }
+            } catch(e) {
+                console.error("Error reloading route:", e);
+            }
+        }
 
     </script>
 </body>
