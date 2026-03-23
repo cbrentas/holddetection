@@ -609,4 +609,75 @@ def delete_route_hold(route_id: str, route_hold_id: str, db: Session = Depends(g
         
     return {"status": "success"}
 
+@api_router.get("/walls/{wall_id}/routes/full")
+def get_wall_routes_full(wall_id: str, db: Session = Depends(get_db), username: str = Depends(basic_auth)):
+    wall = db.query(Wall).filter(Wall.id == wall_id).first()
+    if not wall:
+        raise HTTPException(status_code=404, detail="Wall not found")
+
+    wall_holds = db.query(WallHold).filter(WallHold.wall_id == wall_id).order_by(WallHold.id).all()
+    routes = db.query(Route).filter(Route.wall_id == wall_id).order_by(desc(Route.updated_at)).all()
+
+    routes_arr = []
+    for r in routes:
+        sorted_holds = sorted(
+            r.holds, 
+            key=lambda rh: (
+                rh.order_index if rh.order_index is not None else float('inf'),
+                rh.created_at.timestamp() if rh.created_at else 0
+            )
+        )
+        routes_arr.append({
+            "id": str(r.id),
+            "wall_id": str(r.wall_id),
+            "name": r.name,
+            "difficulty": r.difficulty,
+            "description": r.description,
+            "created_by": r.created_by,
+            "created_at": r.created_at.isoformat() if r.created_at else None,
+            "updated_at": r.updated_at.isoformat() if r.updated_at else None,
+            "hold_count": len(sorted_holds),
+            "holds": [
+                {
+                    "route_hold_id": str(rh.id),
+                    "wall_hold_id": str(rh.wall_hold_id),
+                    "role": rh.role,
+                    "order_index": rh.order_index
+                }
+                for rh in sorted_holds
+            ]
+        })
+        
+    holds_arr = [
+        {
+            "id": str(h.id),
+            "class_name": h.class_name,
+            "x1": h.x1,
+            "y1": h.y1,
+            "x2": h.x2,
+            "y2": h.y2,
+            "center_x": h.center_x,
+            "center_y": h.center_y,
+            "label_text": h.label_text,
+            "label_x": h.label_x,
+            "label_y": h.label_y,
+            "is_hidden": h.is_hidden,
+        }
+        for h in wall_holds
+    ]
+
+    return {
+        "wall": {
+            "id": str(wall.id),
+            "title": wall.title,
+            "status": wall.status,
+            "original_image_uri": wall.original_image_uri,
+            "preview_image_uri": wall.preview_image_uri,
+            "created_at": wall.created_at.isoformat() if wall.created_at else None,
+            "updated_at": wall.updated_at.isoformat() if wall.updated_at else None,
+        },
+        "wall_holds": holds_arr,
+        "routes": routes_arr
+    }
+
 app.include_router(api_router)

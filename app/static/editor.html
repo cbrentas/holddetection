@@ -1115,8 +1115,8 @@
                 const wh = state.wallHolds.find(w => w.id === rh.wall_hold_id);
                 if (!wh) return;
                 
-                const cx = ((wh.x1 + wh.x2) / 2 / state.imageNaturalWidth) * 100;
-                const cy = ((wh.y1 + wh.y2) / 2 / state.imageNaturalHeight) * 100;
+                const cx = (wh.x1 + wh.x2) / 2;
+                const cy = (wh.y1 + wh.y2) / 2;
                 
                 if (i === 0) {
                     pathD += `M ${cx} ${cy} `;
@@ -1124,8 +1124,8 @@
                     const prevRh = route.holds[i-1];
                     const prevWh = state.wallHolds.find(w => w.id === prevRh.wall_hold_id);
                     if (prevWh) {
-                        const px = ((prevWh.x1 + prevWh.x2) / 2 / state.imageNaturalWidth) * 100;
-                        const py = ((prevWh.y1 + prevWh.y2) / 2 / state.imageNaturalHeight) * 100;
+                        const px = (prevWh.x1 + prevWh.x2) / 2;
+                        const py = (prevWh.y1 + prevWh.y2) / 2;
                         
                         const dx = cx - px;
                         const dy = cy - py;
@@ -1142,8 +1142,8 @@
                 path.setAttribute('d', pathD);
                 path.setAttribute('fill', 'none');
                 path.setAttribute('stroke', 'rgba(168, 85, 247, 0.6)');
-                path.setAttribute('stroke-width', '0.4%');
-                path.setAttribute('stroke-dasharray', '1% 1%');
+                path.setAttribute('stroke-width', '4');
+                path.setAttribute('stroke-dasharray', '8 4');
                 path.setAttribute('stroke-linecap', 'round');
                 linesLayer.appendChild(path);
             }
@@ -1715,7 +1715,7 @@
                     
                     holdsHtml += `
                     <div class="route-hold-item" data-rh-id="${rh.route_hold_id}">
-                        <div style="flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="${holdName}">${holdName}</div>
+                        <div class="rh-name" data-wh-id="${rh.wall_hold_id}" style="flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; cursor: pointer;" title="${holdName}">${holdName}</div>
                         <select class="rh-role" style="width: 80px;" title="Role">
                             <option value="Foot" ${rh.role === 'Foot' ? 'selected' : ''}>Foot</option>
                             <option value="Hand" ${rh.role === 'Hand' ? 'selected' : ''}>Hand</option>
@@ -1833,6 +1833,13 @@
                 const roleSel = el.querySelector('.rh-role');
                 const ordInp = el.querySelector('.rh-order');
                 const rmBtn = el.querySelector('.btn-remove-rh');
+                const nameDiv = el.querySelector('.rh-name');
+
+                if (nameDiv) {
+                    nameDiv.addEventListener('click', () => {
+                        selectHold(nameDiv.dataset.whId);
+                    });
+                }
 
                 roleSel.addEventListener('change', e => updateRouteHold(route.id, rhId, { role: e.target.value }));
                 ordInp.addEventListener('change', e => {
