@@ -514,6 +514,7 @@
             <div class="route-mode-banner">ROUTE EDITING MODE ACTIVE</div>
             <div class="canvas-container" id="canvas-container">
                 <img id="wall-image" src="" alt="Original Wall">
+                <svg id="route-lines-layer" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 5; overflow: visible;"></svg>
                 <div id="holds-layer"></div>
                 <div id="temp-hold-box"></div>
             </div>
@@ -1039,7 +1040,7 @@
                             alert("Please select a route first");
                             return;
                         }
-                        toggleRouteHold(hold.id);
+                        toggleRouteHold(hold.id, hitbox);
                         return;
                     }
                     
@@ -1098,6 +1099,54 @@
             });
 
             holdsLayer.appendChild(fragment);
+            renderRouteLines();
+        }
+
+        function renderRouteLines() {
+            const linesLayer = document.getElementById('route-lines-layer');
+            linesLayer.innerHTML = '';
+            
+            if (!state.activeRouteId || !state.imageNaturalWidth) return;
+            const route = state.routes.find(r => r.id === state.activeRouteId);
+            if (!route || !route.holds || route.holds.length < 2) return;
+
+            let pathD = "";
+            route.holds.forEach((rh, i) => {
+                const wh = state.wallHolds.find(w => w.id === rh.wall_hold_id);
+                if (!wh) return;
+                
+                const cx = ((wh.x1 + wh.x2) / 2 / state.imageNaturalWidth) * 100;
+                const cy = ((wh.y1 + wh.y2) / 2 / state.imageNaturalHeight) * 100;
+                
+                if (i === 0) {
+                    pathD += `M ${cx} ${cy} `;
+                } else {
+                    const prevRh = route.holds[i-1];
+                    const prevWh = state.wallHolds.find(w => w.id === prevRh.wall_hold_id);
+                    if (prevWh) {
+                        const px = ((prevWh.x1 + prevWh.x2) / 2 / state.imageNaturalWidth) * 100;
+                        const py = ((prevWh.y1 + prevWh.y2) / 2 / state.imageNaturalHeight) * 100;
+                        
+                        const dx = cx - px;
+                        const dy = cy - py;
+                        const ctrlX = px + dx * 0.5 - dy * 0.2;
+                        const ctrlY = py + dy * 0.5 + dx * 0.2;
+                        
+                        pathD += `Q ${ctrlX} ${ctrlY} ${cx} ${cy} `;
+                    }
+                }
+            });
+
+            if (pathD) {
+                const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+                path.setAttribute('d', pathD);
+                path.setAttribute('fill', 'none');
+                path.setAttribute('stroke', 'rgba(168, 85, 247, 0.6)');
+                path.setAttribute('stroke-width', '0.4%');
+                path.setAttribute('stroke-dasharray', '1% 1%');
+                path.setAttribute('stroke-linecap', 'round');
+                linesLayer.appendChild(path);
+            }
         }
 
         // --- Selection & Inspector ---
@@ -1597,7 +1646,8 @@
             state.routes.forEach(r => {
                 const opt = document.createElement('option');
                 opt.value = r.id;
-                opt.textContent = `${r.name || 'Unnamed'} (${r.difficulty || 'Unrated'})`;
+                const hCount = r.holds ? r.holds.length : 0;
+                opt.textContent = `${r.name || 'Unnamed'} (${r.difficulty || 'Unrated'} - ${hCount} holds)`;
                 routeSelect.appendChild(opt);
             });
             if (state.activeRouteId) {
@@ -1626,7 +1676,10 @@
                     headers: { ...getAuthHeaders(), 'Content-Type': 'application/json' },
                     body: JSON.stringify({ name, difficulty, description: "", created_by: localStorage.getItem('hd_username') })
                 });
-                if (!res.ok) throw new Error("Failed to create route");
+                if (!res.ok) {
+                    const errPayload = await res.json().catch(()=>({}));
+                    throw new Error(errPayload.detail || "Failed to create route");
+                }
                 const newRoute = await res.json();
                 newRoute.holds = [];
                 state.routes.unshift(newRoute);
@@ -1637,7 +1690,7 @@
                 renderHolds();
             } catch (err) {
                 console.error(err);
-                alert("Error creating route");
+                alert(err.message || "Error creating route");
             }
         });
 
@@ -1685,6 +1738,14 @@
                     <p style="font-size: 0.75rem; color: #94a3b8; margin: 0.5rem 0 0 0;">
                         When ON, clicking holds on the wall toggles them in this route. Wall interactions (move/resize) are disabled.
                     </p>
+                </div>
+
+                <div class="form-group">
+                    <label>Route ID</label>
+                    <div style="display: flex; gap: 0.5rem;">
+                        <input type="text" class="form-control" value="${route.id}" readonly style="font-family: monospace; font-size: 0.8rem;">
+                        <button onclick="navigator.clipboard.writeText('${route.id}')" style="padding: 0 0.5rem; background: rgba(255,255,255,0.1); border: 1px solid var(--border-color); color: white; border-radius: 0.25rem; cursor: pointer;" title="Copy ID">📋</button>
+                    </div>
                 </div>
 
                 <div class="form-group">
@@ -1748,7 +1809,11 @@
             document.getElementById('btn-delete-route').addEventListener('click', async () => {
                 if (!confirm("Delete this route?")) return;
                 try {
-                    await fetch(`/bbro/api/routes/${route.id}`, { method: 'DELETE', headers: getAuthHeaders() });
+                    const res = await fetch(`/bbro/api/routes/${route.id}`, { method: 'DELETE', headers: getAuthHeaders() });
+                    if (!res.ok) {
+                        const errPayload = await res.json().catch(()=>({}));
+                        throw new Error(errPayload.detail || "Failed to delete route");
+                    }
                     state.routes = state.routes.filter(r => r.id !== route.id);
                     state.activeRouteId = null;
                     state.isRouteMode = false;
@@ -1758,7 +1823,7 @@
                     renderHolds();
                 } catch (e) {
                     console.error(e);
-                    alert("Error deleting route.");
+                    alert(e.message || "Error deleting route.");
                 }
             });
 
@@ -1778,16 +1843,22 @@
             });
         }
 
-        async function toggleRouteHold(wallHoldId) {
+        async function toggleRouteHold(wallHoldId, hitboxElement = null) {
             if (!state.activeRouteId) return;
             const route = state.routes.find(r => r.id === state.activeRouteId);
             if (!route) return;
+            
+            if (hitboxElement) hitboxElement.style.pointerEvents = 'none';
 
-            const existing = (route.holds || []).find(rh => rh.wall_hold_id === wallHoldId);
-            if (existing) {
-                await removeHoldFromRoute(route.id, existing.route_hold_id);
-            } else {
-                await addHoldToRoute(route.id, wallHoldId);
+            try {
+                const existing = (route.holds || []).find(rh => rh.wall_hold_id === wallHoldId);
+                if (existing) {
+                    await removeHoldFromRoute(route.id, existing.route_hold_id);
+                } else {
+                    await addHoldToRoute(route.id, wallHoldId);
+                }
+            } finally {
+                if (hitboxElement) hitboxElement.style.pointerEvents = 'auto';
             }
         }
 
