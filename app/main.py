@@ -4,7 +4,7 @@ from sqlalchemy import desc
 from pathlib import Path
 import uuid
 from app.db.session import get_db
-from app.db.models import Upload, Job, JobStatus, Model, TrainingRun, Wall, WallHold
+from app.db.models import Upload, Job, JobStatus, Model, TrainingRun, Wall, WallHold, Route, RouteHold
 from app.core.settings import settings
 from app.core.security import basic_auth
 from app.core.storage.service import storage
@@ -15,7 +15,7 @@ from fastapi.staticfiles import StaticFiles
 
 from fastapi import APIRouter
 
-from app.schemas import WallUpdate, WallHoldCreate, WallHoldUpdate
+from app.schemas import WallUpdate, WallHoldCreate, WallHoldUpdate, RouteCreate, RouteUpdate, RouteHoldCreate, RouteHoldUpdate
 
 app = FastAPI(title="Hold Detection API")
 api_router = APIRouter(prefix="/bbro/api")
@@ -379,6 +379,234 @@ def delete_wall_hold(wall_id: str, hold_id: str, db: Session = Depends(get_db), 
 
     db.delete(hold)
     db.commit()
+    return {"status": "success"}
+
+# --- Routes API ---
+
+@api_router.get("/walls/{wall_id}/routes")
+def get_wall_routes(wall_id: str, db: Session = Depends(get_db), username: str = Depends(basic_auth)):
+    wall = db.query(Wall).filter(Wall.id == wall_id).first()
+    if not wall:
+        raise HTTPException(status_code=404, detail="Wall not found")
+
+    routes = db.query(Route).filter(Route.wall_id == wall_id).order_by(desc(Route.updated_at)).all()
+    
+    return [
+        {
+            "id": str(r.id),
+            "wall_id": str(r.wall_id),
+            "name": r.name,
+            "difficulty": r.difficulty,
+            "description": r.description,
+            "created_by": r.created_by,
+            "created_at": r.created_at.isoformat() if r.created_at else None,
+            "updated_at": r.updated_at.isoformat() if r.updated_at else None,
+            "hold_count": len(r.holds)
+        }
+        for r in routes
+    ]
+
+@api_router.post("/walls/{wall_id}/routes")
+def create_wall_route(wall_id: str, data: RouteCreate, db: Session = Depends(get_db), username: str = Depends(basic_auth)):
+    wall = db.query(Wall).filter(Wall.id == wall_id).first()
+    if not wall:
+        raise HTTPException(status_code=404, detail="Wall not found")
+
+    try:
+        route = Route(
+            wall_id=wall.id,
+            name=data.name,
+            difficulty=data.difficulty,
+            description=data.description,
+            created_by=data.created_by
+        )
+        db.add(route)
+        db.commit()
+        db.refresh(route)
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+        
+    return {
+        "id": str(route.id),
+        "wall_id": str(route.wall_id),
+        "name": route.name,
+        "difficulty": route.difficulty,
+        "description": route.description,
+        "created_by": route.created_by,
+        "created_at": route.created_at.isoformat() if route.created_at else None,
+        "updated_at": route.updated_at.isoformat() if route.updated_at else None,
+        "hold_count": 0
+    }
+
+@api_router.get("/routes/{route_id}")
+def get_route(route_id: str, db: Session = Depends(get_db), username: str = Depends(basic_auth)):
+    route = db.query(Route).filter(Route.id == route_id).first()
+    if not route:
+        raise HTTPException(status_code=404, detail="Route not found")
+
+    # Sort route holds exactly as requested
+    sorted_holds = sorted(
+        route.holds, 
+        key=lambda rh: (
+            rh.order_index if rh.order_index is not None else float('inf'),
+            rh.created_at.timestamp() if rh.created_at else 0
+        )
+    )
+
+    return {
+        "id": str(route.id),
+        "wall_id": str(route.wall_id),
+        "name": route.name,
+        "difficulty": route.difficulty,
+        "description": route.description,
+        "created_by": route.created_by,
+        "created_at": route.created_at.isoformat() if route.created_at else None,
+        "updated_at": route.updated_at.isoformat() if route.updated_at else None,
+        "hold_count": len(sorted_holds),
+        "holds": [
+            {
+                "route_hold_id": str(rh.id),
+                "wall_hold_id": str(rh.wall_hold_id),
+                "role": rh.role,
+                "order_index": rh.order_index
+            }
+            for rh in sorted_holds
+        ]
+    }
+
+@api_router.patch("/routes/{route_id}")
+def update_route(route_id: str, data: RouteUpdate, db: Session = Depends(get_db), username: str = Depends(basic_auth)):
+    route = db.query(Route).filter(Route.id == route_id).first()
+    if not route:
+        raise HTTPException(status_code=404, detail="Route not found")
+
+    update_data = data.dict(exclude_unset=True)
+    if not update_data:
+        return {"status": "success", "id": str(route.id)}
+        
+    try:
+        for key, value in update_data.items():
+            setattr(route, key, value)
+            
+        db.commit()
+        db.refresh(route)
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+        
+    return {"status": "success", "id": str(route.id)}
+
+@api_router.delete("/routes/{route_id}")
+def delete_route(route_id: str, db: Session = Depends(get_db), username: str = Depends(basic_auth)):
+    route = db.query(Route).filter(Route.id == route_id).first()
+    if not route:
+        raise HTTPException(status_code=404, detail="Route not found")
+        
+    try:
+        db.delete(route)
+        db.commit()
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+        
+    return {"status": "success"}
+
+@api_router.get("/routes/{route_id}/holds")
+def get_route_holds(route_id: str, db: Session = Depends(get_db), username: str = Depends(basic_auth)):
+    route = db.query(Route).filter(Route.id == route_id).first()
+    if not route:
+        raise HTTPException(status_code=404, detail="Route not found")
+
+    sorted_holds = sorted(
+        route.holds, 
+        key=lambda rh: (
+            rh.order_index if rh.order_index is not None else float('inf'),
+            rh.created_at.timestamp() if rh.created_at else 0
+        )
+    )
+
+    return [
+        {
+            "route_hold_id": str(rh.id),
+            "wall_hold_id": str(rh.wall_hold_id),
+            "role": rh.role,
+            "order_index": rh.order_index
+        }
+        for rh in sorted_holds
+    ]
+
+@api_router.post("/routes/{route_id}/holds")
+def create_route_hold(route_id: str, data: RouteHoldCreate, db: Session = Depends(get_db), username: str = Depends(basic_auth)):
+    route = db.query(Route).filter(Route.id == route_id).first()
+    if not route:
+        raise HTTPException(status_code=404, detail="Route not found")
+
+    wall_hold = db.query(WallHold).filter(WallHold.id == data.wall_hold_id).first()
+    if not wall_hold:
+        raise HTTPException(status_code=400, detail="Wall hold does not exist")
+        
+    if str(wall_hold.wall_id) != str(route.wall_id):
+        raise HTTPException(status_code=400, detail="Wall hold belongs to a different wall")
+        
+    if wall_hold.is_hidden:
+        raise HTTPException(status_code=400, detail="Cannot add a hidden wall hold to a route")
+        
+    existing_rh = db.query(RouteHold).filter(RouteHold.route_id == route.id, RouteHold.wall_hold_id == wall_hold.id).first()
+    if existing_rh:
+        raise HTTPException(status_code=400, detail="Hold is already added to this route")
+
+    try:
+        rh = RouteHold(
+            route_id=route.id,
+            wall_hold_id=wall_hold.id,
+            role=data.role,
+            order_index=data.order_index
+        )
+        db.add(rh)
+        db.commit()
+        db.refresh(rh)
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+        
+    return {"status": "success", "id": str(rh.id)}
+
+@api_router.patch("/routes/{route_id}/holds/{route_hold_id}")
+def update_route_hold(route_id: str, route_hold_id: str, data: RouteHoldUpdate, db: Session = Depends(get_db), username: str = Depends(basic_auth)):
+    rh = db.query(RouteHold).filter(RouteHold.id == route_hold_id, RouteHold.route_id == route_id).first()
+    if not rh:
+        raise HTTPException(status_code=404, detail="Route hold not found")
+
+    update_data = data.dict(exclude_unset=True)
+    if not update_data:
+        return {"status": "success", "id": str(rh.id)}
+        
+    try:
+        for key, value in update_data.items():
+            setattr(rh, key, value)
+            
+        db.commit()
+        db.refresh(rh)
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+        
+    return {"status": "success", "id": str(rh.id)}
+
+@api_router.delete("/routes/{route_id}/holds/{route_hold_id}")
+def delete_route_hold(route_id: str, route_hold_id: str, db: Session = Depends(get_db), username: str = Depends(basic_auth)):
+    rh = db.query(RouteHold).filter(RouteHold.id == route_hold_id, RouteHold.route_id == route_id).first()
+    if not rh:
+        raise HTTPException(status_code=404, detail="Route hold not found")
+
+    try:
+        db.delete(rh)
+        db.commit()
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+        
     return {"status": "success"}
 
 app.include_router(api_router)
