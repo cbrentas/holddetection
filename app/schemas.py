@@ -44,3 +44,24 @@ class WallHoldUpdate(BaseModel):
         if self.y1 is not None and self.y2 is not None and self.y1 >= self.y2:
             raise ValueError('y2 must be strictly greater than y1')
         return self
+
+class RouteCreate(BaseModel):
+    name: str
+    difficulty: Optional[str] = None
+    description: Optional[str] = None
+    created_by: Optional[str] = None
+
+class RouteUpdate(BaseModel):
+    name: Optional[str] = None
+    difficulty: Optional[str] = None
+    description: Optional[str] = None
+    created_by: Optional[str] = None
+
+class RouteHoldCreate(BaseModel):
+    wall_hold_id: str
+    role: str = "hand"
+    order_index: Optional[int] = None
+
+class RouteHoldUpdate(BaseModel):
+    role: Optional[str] = None
+    order_index: Optional[int] = None
