@@ -198,6 +198,8 @@ class Wall(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
 
+    routes = relationship("Route", back_populates="wall", cascade="all, delete-orphan")
+
 class WallHold(Base):
     __tablename__ = "wall_holds"
 
@@ -227,3 +229,45 @@ class WallHold(Base):
     
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+class Route(Base):
+    __tablename__ = "routes"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    wall_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("walls.id"), nullable=False)
+    
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    difficulty: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_by: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    wall = relationship("Wall", back_populates="routes")
+    holds = relationship("RouteHold", back_populates="route", cascade="all, delete-orphan")
+
+    __table_args__ = (
+        Index("ix_routes_wall_id", "wall_id"),
+    )
+
+class RouteHold(Base):
+    __tablename__ = "route_holds"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    route_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("routes.id"), nullable=False)
+    wall_hold_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("wall_holds.id"), nullable=False)
+    
+    role: Mapped[str] = mapped_column(String(50), nullable=False, default="hand")
+    order_index: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
+
+    route = relationship("Route", back_populates="holds")
+    wall_hold = relationship("WallHold")
+
+    __table_args__ = (
+        UniqueConstraint("route_id", "wall_hold_id", name="uq_route_holds_route_wall_hold"),
+        Index("ix_route_holds_route_id", "route_id"),
+        Index("ix_route_holds_wall_hold_id", "wall_hold_id"),
+    )
