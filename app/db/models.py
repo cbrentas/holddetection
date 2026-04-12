@@ -179,6 +179,44 @@ class Artifact(Base):
         Index("ix_artifacts_training_run_id", "training_run_id"),
     )
 
+class User(Base):
+    __tablename__ = "users"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    email: Mapped[str] = mapped_column(String(255), nullable=False, unique=True, index=True)
+    password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
+    display_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    is_email_verified: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
+    last_login_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+
+class RefreshToken(Base):
+    __tablename__ = "refresh_tokens"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
+    
+    token_hash: Mapped[str] = mapped_column(String(255), nullable=False, unique=True, index=True)
+    family_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False, default=uuid.uuid4)
+    
+    issued_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
+    expires_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    replaced_by_token_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("refresh_tokens.id"), nullable=True)
+    
+    user_agent: Mapped[str | None] = mapped_column(Text, nullable=True)
+    ip_address: Mapped[str | None] = mapped_column(String(50), nullable=True)
+
+    __table_args__ = (
+        Index("ix_refresh_tokens_user_expires", "user_id", "expires_at"),
+        Index("ix_refresh_tokens_family", "family_id"),
+    )
+
 class Wall(Base):
     __tablename__ = "walls"
 
@@ -198,7 +236,18 @@ class Wall(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
 
+    # Note: owner_user_id is intentionally nullable to safely migrate existing rows. 
+    # Existing data should be backfilled with an explicit owner before making this nullable=False in a future phase.
+    owner_user_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
+    visibility: Mapped[str] = mapped_column(String(50), nullable=False, server_default="private")
+    share_slug: Mapped[str | None] = mapped_column(String(255), nullable=True, unique=True)
+    is_archived: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")
+
     routes = relationship("Route", back_populates="wall", cascade="all, delete-orphan")
+
+    __table_args__ = (
+        Index("ix_walls_owner_updated", "owner_user_id", "updated_at"),
+    )
 
 class WallHold(Base):
     __tablename__ = "wall_holds"
@@ -244,11 +293,20 @@ class Route(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
 
+    # Note: owner_user_id is intentionally nullable to safely migrate existing rows. 
+    # Existing data should be backfilled with an explicit owner before making this nullable=False in a future phase.
+    owner_user_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
+    visibility: Mapped[str] = mapped_column(String(50), nullable=False, server_default="private")
+    share_slug: Mapped[str | None] = mapped_column(String(255), nullable=True, unique=True)
+    is_archived: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")
+    integrity_status: Mapped[str] = mapped_column(String(50), nullable=False, server_default="valid")
+
     wall = relationship("Wall", back_populates="routes")
     holds = relationship("RouteHold", back_populates="route", cascade="all, delete-orphan")
 
     __table_args__ = (
         Index("ix_routes_wall_id", "wall_id"),
+        Index("ix_routes_owner_updated", "owner_user_id", "updated_at"),
     )
 
 class RouteHold(Base):
