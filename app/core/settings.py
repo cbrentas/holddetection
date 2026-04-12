@@ -18,4 +18,10 @@ class Settings(BaseSettings):
     API_USER: str
     API_PASSWORD: str
 
+    JWT_SECRET: str
+    JWT_ALGORITHM: str = "HS256"
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = 15
+    REFRESH_TOKEN_EXPIRE_DAYS: int = 30
+    SECURE_COOKIES: bool = True
+
 settings = Settings()
