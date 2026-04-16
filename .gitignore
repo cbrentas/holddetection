@@ -54,3 +54,4 @@ storage/uploads/*
 !storage/uploads/.gitkeep
 storage/results/*
 !storage/results/.gitkeep
+app/static/runs/
