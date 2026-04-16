@@ -13,15 +13,20 @@ from fastapi.responses import FileResponse, RedirectResponse
 from fastapi import HTTPException
 from fastapi.staticfiles import StaticFiles
 
+
 from fastapi import APIRouter
 
 from app.schemas import WallUpdate, WallHoldCreate, WallHoldUpdate, RouteCreate, RouteUpdate, RouteHoldCreate, RouteHoldUpdate
+from app.routers import auth
+import json
+
+RUNS_DIR = Path(__file__).resolve().parent / "static" / "runs"
 
 app = FastAPI(title="Hold Detection API")
 api_router = APIRouter(prefix="/bbro/api")
 
 # Mount frontend
-app.mount("/static", StaticFiles(directory="app/static"), name="static")
+app.mount("/bbro/static", StaticFiles(directory="app/static"), name="static")
 
 @app.get("/")
 def read_index():
@@ -680,4 +685,40 @@ def get_wall_routes_full(wall_id: str, db: Session = Depends(get_db), username: 
         "routes": routes_arr
     }
 
+@api_router.get("/training-runs-local")
+def get_local_training_runs(username: str = Depends(basic_auth)):
+    runs = []
+
+    if not RUNS_DIR.exists():
+        return []
+
+    for run_dir in RUNS_DIR.iterdir():
+        if not run_dir.is_dir():
+            continue
+
+        meta_file = run_dir / "metadata.json"
+        if not meta_file.exists():
+            continue
+
+        try:
+            with open(meta_file) as f:
+                meta = json.load(f)
+
+            runs.append({
+                "id": run_dir.name,
+                "meta": meta,
+                "images": {
+                    "results": f"/bbro/static/runs/{run_dir.name}/results.png",
+                    "confusion": f"/bbro/static/runs/{run_dir.name}/confusion_matrix.png"
+                }
+            })
+        except Exception:
+            continue
+
+    # newest first
+    runs.sort(key=lambda x: x["meta"].get("run_id", ""), reverse=True)
+
+    return runs
+
 app.include_router(api_router)
+app.include_router(auth.router)

@@ -7,6 +7,7 @@ from argon2 import PasswordHasher
 from argon2.exceptions import VerifyMismatchError
 from sqlalchemy.orm import Session
 from sqlalchemy import select, update
+import hashlib
 
 from app.core.settings import settings
 from app.db.models import User, RefreshToken
@@ -62,15 +63,10 @@ def generate_refresh_token_plaintext() -> str:
     return ''.join(secrets.choice(alphabet) for _ in range(64))
 
 def hash_refresh_token(plaintext: str) -> str:
-    # We can use argon2 for refresh tokens as well, or SHA256 since they are high entropy
-    # Argon2 is preferred overall if performance is not an issue for RT verification.
-    return ph.hash(plaintext)
+    return hashlib.sha256(plaintext.encode('utf-8')).hexdigest()
 
 def verify_refresh_token_hash(plaintext: str, token_hash: str) -> bool:
-    try:
-        return ph.verify(token_hash, plaintext)
-    except VerifyMismatchError:
-        return False
+    return hash_refresh_token(plaintext) == token_hash
 
 def create_persisted_refresh_token(
     db: Session, 

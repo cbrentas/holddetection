@@ -264,6 +264,12 @@
                     <div class="loader"></div>
                 </div>
             </div>
+            <div class="card">
+                <h3>Local Training Runs (Colab)</h3>
+                <div id="local-runs-container">
+                    <div class="loader"></div>
+                </div>
+            </div>
         </div>
     </div>
 
@@ -285,6 +291,36 @@
         // Restore auth from local storage if any
         if (localStorage.getItem('hd_username')) usernameInput.value = localStorage.getItem('hd_username');
         if (localStorage.getItem('hd_password')) passwordInput.value = localStorage.getItem('hd_password');
+
+        const renderLocalRuns = (runs) => {
+            const container = document.getElementById('local-runs-container');
+
+            if (!runs || runs.length === 0) {
+                container.innerHTML = '<div class="missing-data">No local runs found.</div>';
+                return;
+            }
+
+            let html = '';
+
+            runs.forEach(run => {
+                html += `
+                    <div style="margin-bottom: 2rem; border-bottom: 1px solid var(--border-color); padding-bottom: 1rem;">
+                        <h4>${run.meta.run_name || run.id}</h4>
+
+                        <div style="font-size: 0.85rem; color: #94a3b8; margin-bottom: 0.5rem;">
+                            epochs: ${run.meta.epochs} | img: ${run.meta.img_size}
+                        </div>
+
+                        <div style="display: flex; gap: 1rem; flex-wrap: wrap;">
+                            <img src="${run.images.results}" width="250">
+                            <img src="${run.images.confusion}" width="250">
+                        </div>
+                    </div>
+                `;
+            });
+
+            container.innerHTML = html;
+        };
 
         const getAuthHeaders = () => {
             const u = usernameInput.value;
@@ -458,6 +494,7 @@
             try {
                 const response = await fetch('/bbro/api/dashboard/stats', {
                     headers: getAuthHeaders()
+                    
                 });
 
                 if (!response.ok) {
@@ -475,6 +512,22 @@
                 renderActiveModel(data.active_model);
                 renderRecentJobs(data.recent_jobs);
                 renderRecentRuns(data.recent_training_runs);
+                try {
+                    const localRunsRes = await fetch('/bbro/api/training-runs-local', {
+                        headers: getAuthHeaders()
+                    });
+
+                    if (localRunsRes.ok) {
+                        const localRuns = await localRunsRes.json();
+                        renderLocalRuns(localRuns);
+                    } else {
+                        document.getElementById('local-runs-container').innerHTML =
+                            '<div class="missing-data">Failed to load local runs.</div>';
+                    }
+                } catch (e) {
+                    document.getElementById('local-runs-container').innerHTML =
+                        '<div class="missing-data">Error loading local runs.</div>';
+                }
                 
             } catch (err) {
                 errorMsg.textContent = err.message;

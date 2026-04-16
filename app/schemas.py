@@ -1,5 +1,6 @@
 from pydantic import BaseModel, Field, model_validator
 from typing import Optional
+from datetime import datetime
 
 class WallUpdate(BaseModel):
     title: Optional[str] = None
@@ -65,3 +66,28 @@ class RouteHoldCreate(BaseModel):
 class RouteHoldUpdate(BaseModel):
     role: Optional[str] = None
     order_index: Optional[int] = None
+
+class UserRegister(BaseModel):
+    email: str = Field(min_length=3, max_length=255)
+    password: str = Field(min_length=8)
+    display_name: Optional[str] = None
+
+class UserLogin(BaseModel):
+    email: str
+    password: str
+
+class TokenResponse(BaseModel):
+    access_token: str
+    refresh_token: str
+    token_type: str = "bearer"
+
+class RefreshRequest(BaseModel):
+    refresh_token: str
+
+class UserProfile(BaseModel):
+    id: str
+    email: str
+    display_name: Optional[str] = None
+    created_at: datetime
+    last_login_at: Optional[datetime] = None
+
