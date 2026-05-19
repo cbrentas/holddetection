@@ -1,0 +1,14 @@
+{
+  "run_id": "20260417_060309",
+  "run_name": "v3_vflip_0.2",
+  "img_size": 1024,
+  "epochs": 120,
+  "batch": 8,
+  "augmentation": {
+    "fliplr": 0.5,
+    "flipud": 0.2,
+    "hsv_h": 0.01,
+    "hsv_s": 0.4,
+    "hsv_v": 0.2
+  }
+}

@@ -1,0 +1,14 @@
+{
+  "run_id": "20260416_062837",
+  "run_name": "v2_hflip_light",
+  "img_size": 1024,
+  "epochs": 120,
+  "batch": 8,
+  "augmentation": {
+    "fliplr": 0.5,
+    "flipud": 0.0,
+    "hsv_h": 0.02,
+    "hsv_s": 0.7,
+    "hsv_v": 0.4
+  }
+}
